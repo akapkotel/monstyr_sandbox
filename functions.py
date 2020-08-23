@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Tuple
+from typing import Tuple, Set
 from functools import wraps
 
 
@@ -56,3 +56,7 @@ def print_return(func):
         print(returned)
         return returned
     return wrapper
+
+
+def single_slashes(path: str) -> str:
+    return path.replace('\\\\', "\\")

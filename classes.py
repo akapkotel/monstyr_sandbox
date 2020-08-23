@@ -16,9 +16,10 @@ RAGADAN = 'Ragada'
 class Nobleman:
     """Base class for all noblemen in sandbox."""
 
-    __slots__ = ['full_name', 'portrait', 'sex', 'age', '_spouse', '_siblings', '_children',
-                 'nationality', 'faction', 'title', 'church_title', 'abbey_rank', 'military_rank',
-                 'liege', '_vassals', '_fiefs', 'info']
+    __slots__ = ['full_name', 'portrait', 'sex', 'age', '_spouse', '_siblings',
+                 '_children', 'nationality', 'faction', 'title',
+                 'church_title', 'abbey_rank', 'military_rank', 'liege',
+                 '_vassals', '_fiefs', 'info']
 
     def __init__(self,
                  full_name: str = '',
@@ -60,7 +61,7 @@ class Nobleman:
     def spouse(self, spouse: Nobleman):
         if spouse.sex != self.sex:  # Homophobic! ;)
             self._spouse = spouse
-            spouse._spouse = self
+            spouse._spouse = self  # use protected attr to avoid circular call
 
     @property
     def siblings(self):
@@ -91,6 +92,9 @@ class Nobleman:
     @property
     def vassals(self) -> Set[Nobleman]:
         return self._vassals
+
+    def vassals_of_title(self, title: Title) -> Set[Nobleman]:
+        return set(vassal for vassal in self.vassals if vassal.title is title)
 
     def add_vassals(self, *vassals: Nobleman):
         self._vassals.update(vassals)
@@ -165,17 +169,21 @@ class Nobleman:
 
     def __gt__(self, other: Nobleman) -> bool:
         """Compare two Noblemen titles."""
-        return self.title.hierarchy()[self.title] > other.title.hierarchy()[other.title]
+        return self.hierarchy[self.title] > other.hierarchy[other.title]
 
     def __lt__(self, other: Nobleman) -> bool:
         """Compare two Noblemen titles."""
-        return self.title.hierarchy()[self.title] < other.title.hierarchy()[other.title]
+        return self.hierarchy[self.title] < other.hierarchy[other.title]
+
+    @property
+    def hierarchy(self) -> Dict:
+        return self.title.hierarchy()
 
 
 class Location:
 
-    __slots__ = ['name', 'picture', 'position', 'type', 'owner', 'faction', 'population',
-                 'soldiers', 'description']
+    __slots__ = ['name', 'picture', 'position', 'type', 'owner', 'faction',
+                 'population', 'soldiers', 'description']
 
     def __init__(self,
                  name: str = '',
@@ -191,7 +199,7 @@ class Location:
         self.position = position
         self.type = location_type
         self.owner = owner
-        self.faction = owner.faction or Faction.neutral
+        self.faction = Faction.neutral if owner is None else owner.faction
         self.population = population
         self.soldiers = soldiers
         self.description = ''
