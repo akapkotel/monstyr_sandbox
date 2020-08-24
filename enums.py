@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
 from random import randint, choice, random as random_float
+from functools import lru_cache
 from enum import Enum
 
 
 class MyEnum(Enum):
 
     @classmethod
+    @lru_cache(maxsize=1)
     def hierarchy(cls):
         return {
             title: i for i, title in enumerate(cls)
@@ -14,6 +16,9 @@ class MyEnum(Enum):
 
     def __gt__(self, other):
         return self.hierarchy()[self] > other.hierarchy()[other]
+
+    def __lt__(self, other):
+        return self.hierarchy()[self] < other.hierarchy()[other]
 
     @classmethod
     def choice(cls):

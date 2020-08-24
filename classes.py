@@ -36,25 +36,25 @@ class Nobleman:
         self.portrait = f'portraits/{full_name}.png'
         self.sex: Sex = Sex.woman if self.first_name.endswith('a') else Sex.man
         self.age = age
-        self._spouse: Optional[Nobleman] = None
-        self._siblings: Set[Nobleman] = set()
-        self._children: Set[Nobleman] = set()
+        self._spouse: Optional[Union[Nobleman, str]] = None
+        self._siblings: Set[Union[Nobleman, str]] = set()
+        self._children: Set[Union[Nobleman, str]] = set()
         self.nationality = nationality
         self.faction = faction
         self.title = title
         self.church_title = church_title
         self.abbey_rank = abbey_rank
         self.military_rank = military_rank
-        self.liege = liege
-        self._vassals = set()
-        self._fiefs = set()
+        self.liege: Optional[Union[Nobleman, str]] = liege
+        self._vassals: Set[Union[Nobleman, str]] = set()
+        self._fiefs: Set[Union[Nobleman, str]] = set()
         self.info: List[str] = []
 
     def __repr__(self):
         return f'Nobleman: {self.title_and_name}'
 
     @property
-    def spouse(self) -> Optional[Nobleman]:
+    def spouse(self) -> Optional[Union[Nobleman, str]]:
         return self._spouse
 
     @spouse.setter
@@ -71,7 +71,7 @@ class Nobleman:
     def siblings(self, *siblings: Nobleman):
         for sibling in siblings:
             self._siblings.add(sibling)
-            sibling.siblings.add(self)
+            sibling._siblings.add(self)
 
     @siblings.deleter
     def siblings(self):
@@ -80,7 +80,7 @@ class Nobleman:
         self._siblings.clear()
 
     @property
-    def children(self) -> Set[Nobleman]:
+    def children(self) -> Set[Union[Nobleman, str]]:
         return self._children
 
     @children.setter
@@ -90,7 +90,7 @@ class Nobleman:
                 self._children.add(child)
 
     @property
-    def vassals(self) -> Set[Nobleman]:
+    def vassals(self) -> Set[Union[Nobleman, str]]:
         return self._vassals
 
     def vassals_of_title(self, title: Title) -> Set[Nobleman]:
@@ -106,7 +106,7 @@ class Nobleman:
         self._vassals.clear()
 
     @property
-    def fiefs(self) -> Set[Location]:
+    def fiefs(self) -> Set[Union[Location. str]]:
         return self._fiefs
 
     def add_fiefs(self, *fiefs: Location):
@@ -124,7 +124,7 @@ class Nobleman:
 
     @property
     def name(self) -> str:
-        return self.full_name
+        return self.title_and_name
 
     @property
     def family_name(self) -> str:
@@ -157,7 +157,10 @@ class Nobleman:
         Return all Locations this Noblemen posses, and all Locations
         of his vassals queried recursively.
         """
-        return self.fiefs.union(v.full_domain() for v in self.vassals)
+        domain = {fief for fief in self.fiefs}
+        for vassal in self.vassals:
+            domain.update(vassal.full_domain())
+        return domain
 
     def set_fiefs(self, *fiefs: Location):
         self.fiefs.update(fiefs)
@@ -168,12 +171,10 @@ class Nobleman:
         return set(fief for fief in self.fiefs if fief.type == location_type)
 
     def __gt__(self, other: Nobleman) -> bool:
-        """Compare two Noblemen titles."""
-        return self.hierarchy[self.title] > other.hierarchy[other.title]
+        return self.title > other.title
 
     def __lt__(self, other: Nobleman) -> bool:
-        """Compare two Noblemen titles."""
-        return self.hierarchy[self.title] < other.hierarchy[other.title]
+        return self.title < other.title
 
     @property
     def hierarchy(self) -> Dict:

@@ -23,7 +23,6 @@ WINDOW_TITLE = 'Lords Manager'
 
 def pack_widget(widget, **kwargs):
     """Pack widgets and nested widgets recursively."""
-    # assert isinstance(widget, (tk.Widget, List))
     try:
         widget.pack(**kwargs)
     except AttributeError:
@@ -227,19 +226,27 @@ class Application(tk.Tk):
         self.lords_list = Listbox(left_frame, height=20, width=30,
                                   selectmode=tk.SINGLE)
         self.lords_list.bind('<Button-1>',
-                             partial(self.configure_detail_button,
-                                     'Lord details', self.lords_details))
+                             partial(
+                                 self.configure_detail_button,
+                                 'Lord details', self.lords_details
+                                 )
+                             )
         self.lords_search_entry.bind(
-            '<Key>', partial(self.input_match_search, search,
-                             lambda: self.manager.lords, self.lords_list))
+            '<Key>', partial(
+                self.input_match_search, search,
+                lambda: self.manager.lords, self.lords_list
+                )
+            )
 
         top_center_frame = Frame(center_frame)
         self.details_button = TkButton(top_center_frame)
+        self.selected_image = Label(top_center_frame)
 
         lords_list_label.pack(side=TOP)
         self.lords_search_entry.pack(side=TOP)
         self.lords_list.pack(side=TOP)
         self.details_button.pack(side=TOP)
+        self.selected_image.pack(side=TOP)
         top_center_frame.pack(side=TOP)
 
         locations_list_label = Label(right_frame,
@@ -344,11 +351,12 @@ class Application(tk.Tk):
 
     def lords_details(self):
         instance = self.manager.get_lord_by_name(self.lords_list.get(ACTIVE))
+        self.manager.convert_str_data_to_instances(instance)
         self.details_window(instance)
 
     def location_details(self):
-        instance = self.manager.get_location_by_name(
-            self.locations_list.get(ACTIVE))
+        name = self.locations_list.get(ACTIVE)
+        instance = self.manager.get_location_by_name(name)
         self.details_window(instance)
 
     def details_window(self, instance: Union[Nobleman, Location]):
@@ -358,8 +366,11 @@ class Application(tk.Tk):
         """
         window = tk.Toplevel()
         window.title(instance.name)
-        window.geometry('500x900')
-        # filled in step [1] and passed in step [2] to save method when user clicks 'Save ...':
+        window.protocol("WM_DELETE_WINDOW",
+                        partial(self.close_details_window, window, instance))
+        window.geometry('550x900')
+        # filled in step [1] and passed in step [2] to save method when user
+        # clicks 'Save ...':
         data: List[Tuple] = []
 
         for i, name in enumerate(instance.__slots__):
@@ -377,56 +388,96 @@ class Application(tk.Tk):
                    command=lambda: self.save_instance(instance, data)).pack(
             side=TOP)  # step 2
 
+    def close_details_window(self,
+                             window: tk.Toplevel,
+                             instance: Union[Nobleman, Location]):
+        self.manager.prepare_for_save(instance)
+        window.destroy()
+
     @staticmethod
     def generate_label(container, name) -> Label:
         label_text = f"{name.replace('_', ' ').lstrip(' ').title()}:"
         return Label(container, text=label_text, bd=1, anchor='w',
                      width=15).pack(side=LEFT, fill=BOTH, expand=False)
 
+    def generate_data_widget(self,
+                             attr: Any,
+                             container: Frame,
+                             name: str) -> Tuple:
+        data = attr, container
+        if isinstance(attr, str):
+            variable, widget = self.widget_from_string_attribute(*data, name)
+        elif isinstance(attr, int):
+            variable, widget = self.widget_from_int_attribute(*data, name)
+        elif isinstance(attr, Tuple):
+            variable, widget = self.widget_from_int_tuple(*data)
+        elif isinstance(attr, MyEnum):
+            variable, widget = self.widget_from_enum_attribute(*data)
+        elif isinstance(attr, Set):
+            variable, widget = self.widget_from_set_attribute(*data)
+        elif isinstance(attr, List):
+            variable, widget = self.widget_from_list_attribute(*data)
+        else:  # isinstance(attr, (Nobleman, Location)):
+            variable, widget = self.widget_from_instance_or_none(*data)
+        return variable, pack_widget(widget, side=LEFT)
+
     @staticmethod
-    def generate_data_widget(attr: Any, container: Frame, name: str) -> Tuple:
+    def widget_from_string_attribute(attr, container, name):
+        variable = StringVar(value=attr)
         if name in ('portrait', 'image'):
-            variable = StringVar(value=single_slashes(attr))
             photo = load_image_or_placeholder(attr)
             widget = Label(container, image=photo, relief=SUNKEN)
             widget.photo = photo
-        elif isinstance(attr, str):
-            variable = StringVar(value=attr)
+        else:
             widget = Entry(container, textvariable=variable)
-        elif isinstance(attr, int):
-            variable = IntVar(value=attr)
-            widget = Entry(container,
-                           textvariable=variable,
-                           width=3 if name == 'age' else 6,
-                           justify=CENTER)
-        elif isinstance(attr, Tuple):
-            variable = x, y = IntVar(value=attr[0]), IntVar(value=attr[1])
-            widget = [
-                Entry(container, textvariable=x, width=4, justify=CENTER),
-                Entry(container, textvariable=y, width=4, justify=CENTER)]
-        elif isinstance(attr, MyEnum):
-            variable = StringVar(value=attr)
-            widget = Spinbox(container, values=[e.value for i, e in
-                enumerate(attr.__class__)],
-                             textvariable=variable)
-            widget.delete(0, END)
-            widget.insert(0, attr.value)
-        elif isinstance(attr, Set):
-            variable = [e.name for e in attr]
-            widget = Listbox(container, height=3, selectmode=tk.SINGLE)
-            for item in attr:
-                widget.insert(END, item.name)
-        elif attr is None:
-            variable = StringVar(value='')
-            widget = Entry(container, textvariable=variable)
-        elif isinstance(attr, List):
-            variable = StringVar(value='\t'.join(attr))
-            widget = Entry(container, textvariable=variable)
-        else:  # isinstance(attr, (Nobleman, Location))
-            variable = StringVar(value=attr.name)
-            widget = Entry(container, textvariable=variable)
+        return variable, widget
 
-        return variable, pack_widget(widget, side=LEFT)
+    @staticmethod
+    def widget_from_int_attribute(attr, container, name):
+        variable = IntVar(value=attr)
+        widget = Entry(container,
+                       textvariable=variable,
+                       width=3 if name == 'age' else 6,
+                       justify=CENTER)
+        return variable, widget
+
+    @staticmethod
+    def widget_from_int_tuple(attr, container):
+        variable = x, y = IntVar(value=attr[0]), IntVar(value=attr[1])
+        widget = [
+            Entry(container, textvariable=x, width=4, justify=CENTER),
+            Entry(container, textvariable=y, width=4, justify=CENTER)]
+        return variable, widget
+
+    @staticmethod
+    def widget_from_set_attribute(attr, container):
+        variable = [e.name for e in attr]
+        widget = Listbox(container, height=3, selectmode=tk.SINGLE)
+        for item in attr:
+            widget.insert(END, item.name)
+        return variable, widget
+
+    @staticmethod
+    def widget_from_enum_attribute(attr, container):
+        variable = StringVar(value=attr)
+        widget = Spinbox(container,
+                         values=[e.value for i, e in enumerate(attr.__class__)],
+                         textvariable=variable)
+        widget.delete(0, END)
+        widget.insert(0, attr.value)
+        return variable, widget
+
+    @staticmethod
+    def widget_from_list_attribute(attr, container):
+        variable = StringVar(value='\t'.join(attr))
+        widget = Entry(container, textvariable=variable)
+        return variable, widget
+
+    @staticmethod
+    def widget_from_instance_or_none(attr, container):
+        variable = StringVar(value='' if attr is None else attr.name)
+        widget = Entry(container, textvariable=variable)
+        return variable, widget
 
     def generate_action_widget(self, container, instance, name, variable,
                                widget):
@@ -435,17 +486,13 @@ class Application(tk.Tk):
                                 command=partial(self.change_widget_image,
                                                 widget, variable))
         elif name == 'full_name':
-            action = AuthButton(container, text='Random first_name',
+            action = AuthButton(container, text='Random name',
                                 command=partial(self.generate_random_name,
                                                 variable, instance.sex)
                                 )
         elif name in ('_spouse', 'liege'):
-            change = AuthButton(container, text='Change',
-                                command=partial(self.lords_listbox_window,
-                                                instance, name, variable))
-            delete = AuthButton(container, text='Delete',
-                                command=lambda: variable.set(value=''))
-            action = (change, delete)
+            action = self.spouse_or_liege_action(container, instance, name,
+                                                 variable)
         elif isinstance(widget, Listbox):
             add = AuthButton(container, text=f'Add {name.lstrip("_")}',
                              command=partial(self.lords_listbox_window,
@@ -455,30 +502,47 @@ class Application(tk.Tk):
                                                 variable, widget))
             action = (add, delete)
         else:
-            action = None
-        return pack_widget(action, side=LEFT,
-                           expand=False) if action is not None else None
+            return None
+        return pack_widget(action, side=LEFT, fill='x', expand=True)
+
+    def spouse_or_liege_action(self, container, instance, name, variable):
+        if name == '_spouse':
+            change_text, delete_text = 'New marriage', 'Divorce'
+        else:
+            change_text, delete_text = 'New liege', 'Break feudal bond'
+        return (
+            AuthButton(container, text=change_text,
+                       command=partial(self.lords_listbox_window, instance,
+                                       name, variable)),
+            AuthButton(container, text=delete_text,
+                       command=lambda: variable.set(value='')))
 
     def generate_random_name(self, variable: StringVar, sex: Sex):
         variable.set(self.manager.random_lord_name(sex))
 
     def set_widget_value_to_listbox_value(self, widget: Listbox,
                                           listbox: Listbox, event: tk.Event):
-        instance = self.get_listbox_selected_value(event, listbox)
-        widget.insert(END, instance.name)
+        # instance = self.get_listbox_selected_value(event, listbox)
+        name = listbox.get(f"@{event.x},{event.y}")
+        widget.insert(END, name)
 
     def set_variable_value_to_listbox_value(self, variable: Any,
                                             listbox: Listbox, event: tk.Event):
-        instance = self.get_listbox_selected_value(event, listbox)
+        # name = self.get_listbox_selected_value(event, listbox)
+        name = listbox.get(f"@{event.x},{event.y}")
         try:
-            variable.set(instance.name)
+            variable.set(name)
         except AttributeError:
-            variable.append(instance.name)
+            variable.append(name)
 
-    def get_listbox_selected_value(self, event: tk.Event, listbox: Listbox) -> \
-    Union[Nobleman, Location]:
+    def get_listbox_selected_value(self,
+                                   event: tk.Event,
+                                   listbox: Listbox) -> Union[Nobleman, Location]:
         listbox_selected = listbox.get(f"@{event.x},{event.y}")
-        instance = self.manager.get_lord_by_name(listbox_selected)
+        try:
+            instance = self.manager.get_lord_by_name(listbox_selected)
+        except StopIteration:
+            instance = self.manager.get_location_by_name(listbox_selected)
         return instance
 
     @staticmethod
@@ -492,32 +556,32 @@ class Application(tk.Tk):
     def save_instance(self, instance: Union[Nobleman, Location],
                       data: List[Tuple]):
         for tuple_ in data:
-            name, attribute, widget, variable = tuple_
-            if name in ('portrait', 'image'):
-                value = variable.get()
-            else:
-                value = self.convert_data_to_attribute(name, attribute, widget)
-            setattr(instance, name, value)
-            if name in ('_spouse', 'liege'):
-                other_lord = self.get_object_from_name(value, name)
-                setattr(other_lord, name, instance)
+            self.save_single_attribute(instance, tuple_)
         self.manager.add(instance)
         # self.manager.save()  # TODO: uncomment when app is ready
         self.update_widgets_values()
 
-    def convert_data_to_attribute(self, name, attribute, widget) -> Any:
-        widget_value = self.get_widget_value(widget)
-        if isinstance(attribute, MyEnum):
-            return self.cast_value_to_enum(attribute, widget_value)
-        elif isinstance(attribute, Set):
-            return self.cast_value_to_set(name, widget_value)
+    def save_single_attribute(self, instance, tuple_):
+        name, attribute, widget, variable = tuple_
+        if name in ('portrait', 'image'):
+            value = variable.get()
         else:
-            return widget_value
+            value = self.convert_data_to_attribute(name, attribute, widget)
+        setattr(instance, name, value)
+
+    def convert_data_to_attribute(self, name, attribute, widget) -> Any:
+        value = self.get_widget_value(widget)
+        if isinstance(attribute, MyEnum):
+            return self.cast_value_to_enum(attribute, value)
+        elif isinstance(attribute, Set):
+            return self.cast_value_to_set(name, value)
+        else:
+            return self.get_object_from_name(value, name)
 
     def get_widget_value(self, widget):
         """
-        Retrieve value of the tkinter widget no matter what
-        kind of the widget it is.
+        Retrieve value of the tkinter widget no matter what kind of the
+        widget it is.
         """
         if isinstance(widget, Entry):
             return widget.get()
@@ -532,32 +596,30 @@ class Application(tk.Tk):
     @staticmethod
     def cast_value_to_enum(attribute: Any, widget_value: str):
         """
-        Convert string name of the MyEnum retrieved from the tkinter
-        widget to the corresponding MyEnum value.
+        Convert string name of the MyEnum retrieved from the tkinter widget
+        to the corresponding MyEnum value.
         """
         enum_class: MyEnum = attribute.__class__
         return (t for i, t in enumerate(enum_class)
                 if t.value == widget_value).__next__()
 
-    def cast_value_to_set(self, name: str, widget_value: Iterable) -> Set:
+    def cast_value_to_set(self, name: str, value: Iterable) -> Set:
         """
         Convert content of list retrieved from Listbox widget to the set
         of corresponding Nobleman or Location instances.
         """
-        return set(
-            self.get_object_from_name(elem, name) for elem in widget_value)
+        return set(self.get_object_from_name(elem, name) for elem in value)
 
     def get_object_from_name(self,
                              instance: str,
                              attr_name: str) -> Union[Nobleman, Location]:
         """
-        Convert string name of Nobleman or Location instance retrieved
-        from the tk.Widget to the instance itself.
+        Convert string name of Nobleman or Location instance retrieved from
+        the tk.Widget to the instance itself.
         """
-        if attr_name in (
-        '_children', '_siblings', '_vassals', '_spouse', 'liege'):
+        if attr_name in ('_children', '_siblings', '_vassals', '_spouse', 'liege'):
             instance = self.manager.get_lord_by_name(instance)
-        else:
+        elif attr_name == '_fiefs':
             instance = self.manager.get_location_by_name(instance)
         return instance
 
@@ -595,8 +657,7 @@ class Application(tk.Tk):
             sex = Sex.man if lord.sex is Sex.woman else Sex.woman  # only opposite sex marriages
             data = self.manager.get_lords_of_sex(sex)
         elif name == 'liege':
-            data = [noble for noble in self.manager.lords if
-                noble > lord]  # only higher titles
+            data = [noble for noble in self.manager.lords if noble > lord]
         elif name in ('_siblings', '_children', '_vassals'):
             potential = self.manager.lords
             if name == '_vassals':
@@ -615,8 +676,12 @@ class Application(tk.Tk):
     @staticmethod
     def clear_list_variable(list_variable: List, widget: Listbox):
         deleted = widget.get(ACTIVE)
-        list_variable.remove(deleted)
-        widget.delete(ACTIVE)
+        try:
+            list_variable.remove(deleted)
+        except ValueError:
+            pass
+        finally:
+            widget.delete(ACTIVE)
 
     @staticmethod
     def input_match_search(query_variable: StringVar,
