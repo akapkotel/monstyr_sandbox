@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from functools import lru_cache
-
 from classes import *
 
 LORDS_FIEFS = {  # title: (min fiefs, max fiefs)
@@ -34,8 +32,8 @@ class LordsManager:
     names: Dict[Sex, List[str]] = {}
     surnames: List[str]
     prefixes = List[str]
-    lords: Set[Nobleman] = set()
-    locations: Set[Location] = set()
+    _lords: Dict[int, Nobleman] = {}
+    _locations: Dict[int, Location] = {}
     discarded: Set = set()
 
     def __init__(self):
@@ -46,6 +44,14 @@ class LordsManager:
         self.names[Sex.woman] = self.load_names('f_names.txt')
         self.surnames = self.load_names('surnames.txt')
         self.prefixes = self.load_names('prefixes.txt')
+
+    @property
+    def lords(self):
+        return self._lords.values()
+
+    @property
+    def locations(self):
+        return self._locations.values()
 
     @staticmethod
     def load_names(file_name: str) -> List[str]:
@@ -86,20 +92,18 @@ class LordsManager:
             'Vittorio di Stravicii', 'Amadeus da Orsini',
             'Agostino di Mozzenigo']
 
-        self.lords = set(
-            Nobleman(i, name, 20, RAGADAN, Faction.choice(), Title.count)
-                for i, name in enumerate(counts)
-            )
+        self._lords = {i: Nobleman(i, name, 20, RAGADAN, Faction.choice(), Title.count)
+                for i, name in enumerate(counts, start=0)}
 
         for title, counter in numbers.items():
             for i in range(counter):
                 name = choice(names)
                 names.remove(name)
-                self.lords.add(self.create_random_nobleman(name, title=title)
-                    )
+                lord = self.create_random_nobleman(name, title=title)
+                self._lords[lord.id] = lord
 
     def create_random_nobleman(self, name: str, title: Title = None) -> Nobleman:
-        lord = Nobleman(len(self.lords), name, randint(16, 65), RAGADAN,
+        lord = Nobleman(len(self._lords), name, randint(16, 65), RAGADAN,
                         Faction.choice(),
                         Title.choice() if title is None else title)
         lord.portrait = self.get_generic_portrait_name(lord)
@@ -115,19 +119,22 @@ class LordsManager:
             age_part = '' if lord.age < 50 else 'old_'
         return f'portraits/{age_part}noble{lord.sex.value}.png'
 
-    def _save_data_to_db(self):
+    def _save_data_to_db(self, convert_data: bool):
         import shelve
         with shelve.open('noblemen.sdb', 'c') as file:
             for lord in self.lords:
                 print(f'saving {lord}')
-                file[lord.full_name] = lord  # self.prepare_lord_for_save(lord)
+                if convert_data:
+                    file[f'lord: {lord.id}'] = self.prepare_lord_for_save(lord)
+                else:
+                    file[f'lord: {lord.id}'] = lord
             for location in self.locations:
                 print(f'saving {location}')
-                file[location.name] = location
+                file[f'location: {location.id}'] = location
             for discarded in self.discarded:
                 print(f'deleting {discarded.name}')
                 del file[discarded.name]
-        print(f'Saved {len(self.lords)} lords and {len(self.locations)} locations')
+        print(f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
 
     def prepare_for_save(self,
                          instance: Union[Nobleman, Location]) -> Union[Nobleman, Location]:
@@ -138,11 +145,11 @@ class LordsManager:
     @staticmethod
     def prepare_lord_for_save(lord: Nobleman):
         if lord.spouse:
-            lord._spouse = lord.spouse.title_and_name
+            lord._spouse = lord.spouse.id
         if lord.liege:
-            lord.liege = lord.liege.title_and_name
+            lord.liege = lord.liege.id
         for attr in ('_children', '_siblings', '_vassals', '_fiefs'):
-            setattr(lord, attr, {elem.name for elem in getattr(lord, attr)})
+            setattr(lord, attr, {elem.id for elem in getattr(lord, attr)})
         return lord
 
     @staticmethod
@@ -151,36 +158,41 @@ class LordsManager:
 
     def convert_str_data_to_instances(self, lord: Nobleman):
         if lord.spouse:
-            lord._spouse = self.get_lord_by_name(lord.spouse)
+            lord._spouse = self.get_lord_of_id(lord.spouse)
         if lord.liege:
-            lord.liege = self.get_lord_by_name(lord.liege)
-        lord._vassals = {self.get_lord_by_name(v) for v in lord.vassals}
-        lord._children = {self.get_lord_by_name(c) for c in lord.children}
-        lord._siblings = {self.get_lord_by_name(s) for s in lord.siblings}
-        lord._fiefs = {self.get_location_by_name(f) for f in lord.fiefs}
+            lord.liege = self.get_lord_of_id(lord.liege)
+        lord._vassals = {self.get_lord_of_id(v) for v in lord.vassals}
+        lord._children = {self.get_lord_of_id(c) for c in lord.children}
+        lord._siblings = {self.get_lord_of_id(s) for s in lord.siblings}
+        lord._fiefs = {self.get_location_of_id(f) for f in lord.fiefs}
 
     @staticmethod
-    def _load_data_from_db() -> Tuple[Set[Nobleman], Set[Location]]:
+    def _load_data_from_db() -> Tuple[Dict[int, Nobleman], Dict[int, Location]]:
         import shelve
-        lords: Set[Nobleman] = set()
-        locations: Set[Location] = set()
+        lords: Dict[int, Nobleman] = {}
+        locations: Dict[int, Location] = {}
         with shelve.open('noblemen.sdb', 'r') as file:
             for elem in file:
-                print(f'loading {elem}')
+                print(f'loading {file[elem].name}')
                 if isinstance(loaded := file[elem], Nobleman):
-                    lords.add(file[elem])
+                    lord = file[elem]
+                    lords[lord.id] = lord
                 else:
-                    locations.add(file[elem])
+                    location = file[elem]
+                    locations[location.id] = location
         print(f'Loaded {len(lords)} lords and {len(locations)} locations.')
         return lords, locations
 
     def random_lord(self) -> Nobleman:
         return choice([lord for lord in self.lords])
 
+    def get_lord_of_id(self, id: int) -> Nobleman:
+        return self._lords[id]
+
     @lru_cache(maxsize=2048)
     def get_lord_by_name(self, name: str) -> Nobleman:
         return (noble for noble in self.lords if
-        name in noble.title_and_name).__next__()
+                name in noble.title_and_name).__next__()
 
     def get_lords_of_family(self, family_name: str) -> Set[Nobleman]:
         return set(
@@ -191,7 +203,7 @@ class LordsManager:
 
     def get_lords_of_title(self, title: Title = None) -> Set[Nobleman]:
         if title is None:
-            return self.lords
+            return set(self.lords)
         return set(noble for noble in self.lords if noble.title is title)
 
     def get_lords_of_military_rank(self,
@@ -204,14 +216,12 @@ class LordsManager:
         if title is None:
             return set(noble for noble in self.lords if
                        noble.church_title is not ChurchTitle.no_title)
-        return set(
-            noble for noble in self.lords if noble.church_title is title)
+        return set(noble for noble in self.lords if noble.church_title is title)
 
-    def get_potential_vassals_for_lord(self,
-                                       lord: Nobleman) -> Set[Nobleman]:
+    def get_potential_vassals_for_lord(self, lord: Nobleman) -> Set[Nobleman]:
         return set(v for v in self.get_lords_without_liege() if v < lord)
 
-    def get_lords_without_liege(self):
+    def get_lords_without_liege(self) -> Set[Nobleman]:
         return set(noble for noble in self.lords if noble.liege is None)
 
     def get_lords_by_faction(self, faction: Faction) -> Set[Nobleman]:
@@ -220,11 +230,14 @@ class LordsManager:
     def get_locations_of_type(self,
                               locations_type: LocationType = None) -> Set[Location]:
         if locations_type is None:
-            return self.locations
+            return set(self.locations)
         return set(loc for loc in self.locations if loc.type is locations_type)
 
     def get_locations_by_owner(self, owner: Nobleman) -> Set[Location]:
         return set(loc for loc in self.locations if loc.owner is owner)
+
+    def get_location_of_id(self, id: int) -> Location:
+        return self._locations[id]
 
     @lru_cache(maxsize=1024)
     def get_location_by_name(self, name: str) -> Location:
@@ -266,11 +279,11 @@ class LordsManager:
 
     def collection(self, obj: Union[Nobleman, Location]) -> Union[
         Set[Nobleman], Set[Location]]:
-        return self.lords if isinstance(obj, Nobleman) else self.locations
+        return set(self.lords) if isinstance(obj, Nobleman) else set(self.locations)
 
     def clear(self):
-        self.lords.clear()
-        self.locations.clear()
+        self._lords.clear()
+        self._locations.clear()
 
     @staticmethod
     def clear_db():
@@ -278,17 +291,17 @@ class LordsManager:
         with shelve.open('noblemen.sdb', 'c') as file:
             file.clear()
 
-    def save(self):
-        self._save_data_to_db()
+    def save(self, create=False):
+        self._save_data_to_db(create)
 
     def load(self):
-        self.lords, self.locations = self._load_data_from_db()
+        self._lords, self._locations = self._load_data_from_db()
 
     def __contains__(self, lord: Nobleman):
-        return lord in self.lords
+        return lord in self._lords
 
     def __len__(self):
-        return len(self.lords)
+        return len(self._lords)
 
     def build_feudal_hierarchy(self):
         if not self.enough_lords():
@@ -344,4 +357,4 @@ if __name__ == '__main__':
     manager = LordsManager()
     manager.create_lords_set(1552)
     manager.build_feudal_hierarchy()
-    manager.save()
+    manager.save(create=True)

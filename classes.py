@@ -38,25 +38,25 @@ class Nobleman:
         self.portrait = f'portraits/{full_name}.png'
         self.sex: Sex = Sex.woman if self.first_name.endswith('a') else Sex.man
         self.age = age
-        self._spouse: Optional[Union[Nobleman, str]] = None
-        self._siblings: Set[Union[Nobleman, str]] = set()
-        self._children: Set[Union[Nobleman, str]] = set()
+        self._spouse: Optional[Union[Nobleman, int]] = None
+        self._siblings: Set[Union[Nobleman, int]] = set()
+        self._children: Set[Union[Nobleman, int]] = set()
         self.nationality = nationality
         self.faction = faction
         self.title = title
         self.church_title = church_title
         self.abbey_rank = abbey_rank
         self.military_rank = military_rank
-        self.liege: Optional[Union[Nobleman, str]] = liege
-        self._vassals: Set[Union[Nobleman, str]] = set()
-        self._fiefs: Set[Union[Nobleman, str]] = set()
+        self.liege: Optional[Union[Nobleman, int]] = liege
+        self._vassals: Set[Union[Nobleman, int]] = set()
+        self._fiefs: Set[Union[Nobleman, int]] = set()
         self.info: List[str] = []
 
     def __repr__(self):
         return f'Nobleman: {self.title_and_name}'
 
     @property
-    def spouse(self) -> Optional[Union[Nobleman, str]]:
+    def spouse(self) -> Optional[Union[Nobleman, int]]:
         return self._spouse
 
     @spouse.setter
@@ -82,7 +82,7 @@ class Nobleman:
         self._siblings.clear()
 
     @property
-    def children(self) -> Set[Union[Nobleman, str]]:
+    def children(self) -> Set[Union[Nobleman, int]]:
         return self._children
 
     @children.setter
@@ -92,7 +92,7 @@ class Nobleman:
                 self._children.add(child)
 
     @property
-    def vassals(self) -> Set[Union[Nobleman, str]]:
+    def vassals(self) -> Set[Union[Nobleman, int]]:
         return self._vassals
 
     def vassals_of_title(self, title: Title) -> Set[Nobleman]:
@@ -108,10 +108,10 @@ class Nobleman:
         self._vassals.clear()
 
     @property
-    def fiefs(self) -> Set[Union[Location, str]]:
+    def fiefs(self) -> Set[Union[Location, int]]:
         return self._fiefs
 
-    def add_fiefs(self, *fiefs: Union[Location, str]):
+    def add_fiefs(self, *fiefs: Union[Location, int]):
         self._fiefs.update(fiefs)
         for fief in fiefs:
             fief.owner = self

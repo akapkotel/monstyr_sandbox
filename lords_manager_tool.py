@@ -296,7 +296,7 @@ class Application(tk.Tk):
         self.clergy.set(value=len(self.manager.get_lords_of_church_title()))
         for title, value in self.lords_by_titles.items():
             value.set(len(self.manager.get_lords_of_title(title)))
-        self.locations_count.set(value=len(self.manager.locations))
+        self.locations_count.set(value=len(self.manager._locations))
         for location, value in self.locations_by_type.items():
             value.set(len(self.manager.get_locations_of_type(location)))
         self.update_lords_list()
@@ -353,24 +353,25 @@ class Application(tk.Tk):
 
     def configure_detail_button(self, text: str, function: Callable,
                                 event: tk.Event):
-        self.details_button.configure(text=text, command=function)
+        self.details_button.configure(text=text, command=partial(function, event))
 
-    def lords_details(self):
-        instance = self.manager.get_lord_by_name(self.lords_list.get(ACTIVE))
+    def lords_details(self, event: tk.Event):
+        name = event.widget.get(ACTIVE)  # self.lords_list
+        instance = self.manager.get_lord_by_name(name)
         self.manager.convert_str_data_to_instances(instance)
         self.details_window(instance)
 
-    def location_details(self):
-        name = self.locations_list.get(ACTIVE)
+    def location_details(self, event: tk.Event):
+        name = event.widget.get(ACTIVE)  # self.locations_list
         instance = self.manager.get_location_by_name(name)
         self.details_window(instance)
 
     def create_new(self, object_type: Union[type(Nobleman), type(Location)]):
         if object_type == Nobleman:
-            instance = Nobleman(len(self.manager.lords), 'ADD NAME',
+            instance = Nobleman(len(self.manager._lords), 'ADD NAME',
                                 nationality=RAGADAN)
         else:
-            instance = Location(len(self.manager.locations), 'ADD NAME')
+            instance = Location(len(self.manager._locations), 'ADD NAME')
         self.details_window(instance)
 
     def details_window(self, instance: Union[Nobleman, Location]):
@@ -435,7 +436,7 @@ class Application(tk.Tk):
         elif isinstance(attr, MyEnum):
             variable, widget = self.widget_from_enum_attribute(*data)
         elif isinstance(attr, Set):
-            variable, widget = self.widget_from_set_attribute(*data)
+            variable, widget = self.widget_from_set_attribute(*data, name)
         elif isinstance(attr, List):
             variable, widget = self.widget_from_list_attribute(*data)
         else:  # isinstance(attr, (Nobleman, Location)):
@@ -470,10 +471,11 @@ class Application(tk.Tk):
             Entry(container, textvariable=y, width=4, justify=CENTER)]
         return variable, widget
 
-    @staticmethod
-    def widget_from_set_attribute(attr, container):
+    def widget_from_set_attribute(self, attr, container, name: str):
         variable = [e.name for e in attr]
         widget = Listbox(container, height=3, selectmode=tk.SINGLE)
+        func = self.lords_details if name in LORDS_SETS else self.location_details
+        widget.bind('<Double-Button-1>', func)
         for item in attr:
             widget.insert(END, item.name)
         return variable, widget
@@ -680,9 +682,9 @@ class Application(tk.Tk):
             sex = Sex.man if lord.sex is Sex.woman else Sex.woman
             data = self.manager.get_lords_of_sex(sex)
         elif name == 'liege':
-            data = [noble for noble in self.manager.lords if noble > lord]
+            data = [noble for noble in self.manager._lords if noble > lord]
         elif name in ('_siblings', '_children', '_vassals'):
-            potential = self.manager.lords
+            potential = set(self.manager.lords)
             if name == '_vassals':
                 potential = self.manager.get_potential_vassals_for_lord(lord)
             attribute = getattr(lord, name)
