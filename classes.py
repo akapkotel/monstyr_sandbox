@@ -16,12 +16,13 @@ RAGADAN = 'Ragada'
 class Nobleman:
     """Base class for all noblemen in sandbox."""
 
-    __slots__ = ['full_name', 'portrait', 'sex', 'age', '_spouse', '_siblings',
-                 '_children', 'nationality', 'faction', 'title',
+    __slots__ = ['id', 'full_name', 'portrait', 'sex', 'age', '_spouse',
+                 '_siblings', '_children', 'nationality', 'faction', 'title',
                  'church_title', 'abbey_rank', 'military_rank', 'liege',
                  '_vassals', '_fiefs', 'info']
 
     def __init__(self,
+                 id: int,
                  full_name: str = '',
                  age: int = 25,
                  nationality: str = '',
@@ -32,6 +33,7 @@ class Nobleman:
                  military_rank: MilitaryRank = MilitaryRank.no_rank,
                  liege: Optional[Nobleman] = None
                  ):
+        self.id = id
         self.full_name = full_name
         self.portrait = f'portraits/{full_name}.png'
         self.sex: Sex = Sex.woman if self.first_name.endswith('a') else Sex.man
@@ -106,10 +108,10 @@ class Nobleman:
         self._vassals.clear()
 
     @property
-    def fiefs(self) -> Set[Union[Location. str]]:
+    def fiefs(self) -> Set[Union[Location, str]]:
         return self._fiefs
 
-    def add_fiefs(self, *fiefs: Location):
+    def add_fiefs(self, *fiefs: Union[Location, str]):
         self._fiefs.update(fiefs)
         for fief in fiefs:
             fief.owner = self
@@ -183,10 +185,11 @@ class Nobleman:
 
 class Location:
 
-    __slots__ = ['name', 'picture', 'position', 'type', 'owner', 'faction',
-                 'population', 'soldiers', 'description']
+    __slots__ = ['id', 'name', 'picture', 'position', 'type', 'owner',
+                 'faction', 'population', 'soldiers', 'description']
 
     def __init__(self,
+                 id: int,
                  name: str = '',
                  picture: str = '',
                  position: tuple = (0, 0),
@@ -195,6 +198,7 @@ class Location:
                  population: int = 0,
                  soldiers: int = 0
                  ):
+        self.id: id
         self.picture = picture
         self.name = name or location_type.value
         self.position = position

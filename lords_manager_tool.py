@@ -19,6 +19,7 @@ from classes import *
 from lords_manager import LordsManager
 
 WINDOW_TITLE = 'Lords Manager'
+LORDS_SETS = ('_children', '_vassals', '_spouse', '_siblings', 'liege')
 
 
 def pack_widget(widget, **kwargs):
@@ -92,6 +93,8 @@ class Application(tk.Tk):
         self.lords_filter = None
         self.locations_filter = None
 
+        # handle to retrieve additional TopLevel windows opened by user:
+        self.extra_windows = {}
         # ---- Sections of the Window ----
         sections_names = ['Lords in numbers:', 'Locations in numbers:',
                           'Actions:', 'Lords and fiefs:']
@@ -196,15 +199,15 @@ class Application(tk.Tk):
         """Display numbers of Locations of different types."""
         section = self.sections['Actions:']
 
-        AuthButton(section, command=partial(self.details_window, Nobleman(
-                   'ADD NAME!', 25, RAGADAN)), text='Add new lord',
+        AuthButton(section, command=partial(self.create_new, Nobleman),
+                   text='Add new lord',
                    state=self.sdb_file_exists()).pack(side=LEFT)
 
         TkButton(section, command=self.load_data, text='Reload data',
                  state=self.sdb_file_exists()).pack(side=LEFT, padx=380)
 
-        AuthButton(section, command=partial(self.details_window,
-                   Location('ADD NAME!')), text='Add new location',
+        AuthButton(section, command=partial(self.create_new, Location),
+                   text='Add new location',
                    state=self.sdb_file_exists()).pack(side=RIGHT)
 
     def create_lords_and_fiefs_section(self):
@@ -274,7 +277,10 @@ class Application(tk.Tk):
         right_frame.pack(side=LEFT, expand=True, fill=BOTH)
 
     def update_widgets_values(self):
-        """Call this method every time, when user loads or modifies lords database."""
+        """
+        Call this method every time, when user loads or modifies lords
+        database.
+        """
         self.lords_count.set(value=len(self.manager))
         self.lords_female.set(
             value=len(self.manager.get_lords_of_sex(Sex.woman)))
@@ -359,21 +365,30 @@ class Application(tk.Tk):
         instance = self.manager.get_location_by_name(name)
         self.details_window(instance)
 
+    def create_new(self, object_type: Union[type(Nobleman), type(Location)]):
+        if object_type == Nobleman:
+            instance = Nobleman(len(self.manager.lords), 'ADD NAME',
+                                nationality=RAGADAN)
+        else:
+            instance = Location(len(self.manager.locations), 'ADD NAME')
+        self.details_window(instance)
+
     def details_window(self, instance: Union[Nobleman, Location]):
         """
         Open new TopLevel window containing detailed data about single Nobleman
         or single Location, which allows to edit the data and save it.
         """
         window = tk.Toplevel()
+        self.register_extra_window(instance.id, window)
         window.title(instance.name)
         window.protocol("WM_DELETE_WINDOW",
-                        partial(self.close_details_window, window, instance))
+                        partial(self.close_details_window, instance))
         window.geometry('550x900')
         # filled in step [1] and passed in step [2] to save method when user
         # clicks 'Save ...':
         data: List[Tuple] = []
 
-        for i, name in enumerate(instance.__slots__):
+        for i, name in enumerate(instance.__slots__[1:]):
             attr = getattr(instance, name)
             container = tk.Frame(window, relief=tk.GROOVE, borderwidth=1)
             label = self.generate_label(container, name)
@@ -388,11 +403,17 @@ class Application(tk.Tk):
                    command=lambda: self.save_instance(instance, data)).pack(
             side=TOP)  # step 2
 
-    def close_details_window(self,
-                             window: tk.Toplevel,
-                             instance: Union[Nobleman, Location]):
+    def register_extra_window(self, id: int, window: tk.Toplevel):
+        self.extra_windows[id] = window
+
+    def unregister_extra_window(self, id: int):
+        self.extra_windows[id].destroy()
+        del self.extra_windows[id]
+
+    def close_details_window(self, instance: Union[Nobleman, Location]):
+        """Close window and converts edited data to light strings format."""
         self.manager.prepare_for_save(instance)
-        window.destroy()
+        self.unregister_extra_window(instance.id)
 
     @staticmethod
     def generate_label(container, name) -> Label:
@@ -557,6 +578,7 @@ class Application(tk.Tk):
                       data: List[Tuple]):
         for tuple_ in data:
             self.save_single_attribute(instance, tuple_)
+        self.close_details_window(instance)
         self.manager.add(instance)
         # self.manager.save()  # TODO: uncomment when app is ready
         self.update_widgets_values()
@@ -575,13 +597,17 @@ class Application(tk.Tk):
             return self.cast_value_to_enum(attribute, value)
         elif isinstance(attribute, Set):
             return self.cast_value_to_set(name, value)
+        elif isinstance(attribute, int):
+            return int(value)
+        elif isinstance(attribute, str):
+            return value
         else:
             return self.get_object_from_name(value, name)
 
     def get_widget_value(self, widget):
         """
-        Retrieve value of the tkinter widget no matter what kind of the
-        widget it is.
+        Retrieve value of the tkinter widget no matter what kind of the widget
+        it is. Return raw, unprocessed value for further processing.
         """
         if isinstance(widget, Entry):
             return widget.get()
@@ -611,17 +637,16 @@ class Application(tk.Tk):
         return set(self.get_object_from_name(elem, name) for elem in value)
 
     def get_object_from_name(self,
-                             instance: str,
-                             attr_name: str) -> Union[Nobleman, Location]:
+                             value: str,
+                             attr_name: str) -> Union[Nobleman, Location, str, int]:
         """
-        Convert string name of Nobleman or Location instance retrieved from
-        the tk.Widget to the instance itself.
+        Cast widget value to correct type for attribute name.
         """
-        if attr_name in ('_children', '_siblings', '_vassals', '_spouse', 'liege'):
-            instance = self.manager.get_lord_by_name(instance)
+        if attr_name in LORDS_SETS:
+            return self.manager.get_lord_by_name(value)
         elif attr_name == '_fiefs':
-            instance = self.manager.get_location_by_name(instance)
-        return instance
+            return self.manager.get_location_by_name(value)
+        # return int(value) if value.isalnum() else value
 
     def lords_listbox_window(self, instance, name: str, variable: Any,
                              widget=None):
@@ -644,17 +669,15 @@ class Application(tk.Tk):
                  command=window.destroy).pack(side=TOP)
 
     def fill_listbox_with_data(self, listbox, instance, name):
-        if name in ('_children', '_vassals', '_spouse', '_siblings', 'liege'):
+        if name in LORDS_SETS:
             data = self.get_lords_for_listbox(instance, name)
-            [listbox.insert(END, e.title_and_name) for e in data]
         else:
             data = self.get_locations_for_listbox(instance, name)
-            [listbox.insert(END, e.name) for e in data]
+        [listbox.insert(END, e.name) for e in data]
 
-    def get_lords_for_listbox(self, lord: Nobleman, name: str) -> Union[
-        List, Set]:
+    def get_lords_for_listbox(self, lord: Nobleman, name: str) -> Union[List, Set]:
         if name == '_spouse':
-            sex = Sex.man if lord.sex is Sex.woman else Sex.woman  # only opposite sex marriages
+            sex = Sex.man if lord.sex is Sex.woman else Sex.woman
             data = self.manager.get_lords_of_sex(sex)
         elif name == 'liege':
             data = [noble for noble in self.manager.lords if noble > lord]

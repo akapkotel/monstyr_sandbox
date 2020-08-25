@@ -87,8 +87,8 @@ class LordsManager:
             'Agostino di Mozzenigo']
 
         self.lords = set(
-            Nobleman(name, 20, RAGADAN, Faction.choice(), Title.count)
-                for name in counts
+            Nobleman(i, name, 20, RAGADAN, Faction.choice(), Title.count)
+                for i, name in enumerate(counts)
             )
 
         for title, counter in numbers.items():
@@ -99,7 +99,8 @@ class LordsManager:
                     )
 
     def create_random_nobleman(self, name: str, title: Title = None) -> Nobleman:
-        lord = Nobleman(name, randint(16, 65), RAGADAN, Faction.choice(),
+        lord = Nobleman(len(self.lords), name, randint(16, 65), RAGADAN,
+                        Faction.choice(),
                         Title.choice() if title is None else title)
         lord.portrait = self.get_generic_portrait_name(lord)
         return lord
@@ -119,7 +120,7 @@ class LordsManager:
         with shelve.open('noblemen.sdb', 'c') as file:
             for lord in self.lords:
                 print(f'saving {lord}')
-                file[lord.full_name] = self.prepare_lord_for_save(lord)
+                file[lord.full_name] = lord  # self.prepare_lord_for_save(lord)
             for location in self.locations:
                 print(f'saving {location}')
                 file[location.name] = location
