@@ -218,8 +218,13 @@ class LordsManager:
                        noble.church_title is not ChurchTitle.no_title)
         return set(noble for noble in self.lords if noble.church_title is title)
 
-    def get_potential_vassals_for_lord(self, lord: Nobleman) -> Set[Nobleman]:
-        return set(v for v in self.get_lords_without_liege() if v < lord)
+    def get_potential_vassals_for_lord(self,
+                                       lord: Nobleman,
+                                       title: Title = None) -> Set[Nobleman]:
+        potential = set(v for v in self.get_lords_without_liege() if v < lord)
+        if Title is not None:
+            return set(v for v in potential if v.title is title)
+        return potential
 
     def get_lords_without_liege(self) -> Set[Nobleman]:
         return set(noble for noble in self.lords if noble.liege is None)
@@ -304,6 +309,9 @@ class LordsManager:
         return len(self._lords)
 
     def build_feudal_hierarchy(self):
+        """
+        Assign correct amount of vassals of all titles for each Nobleman.
+        """
         if not self.enough_lords():
             return
         titles = (Title.count, Title.baron, Title.baronet, Title.chevalier)
@@ -312,7 +320,7 @@ class LordsManager:
             lords = self.get_lords_of_title(title)
             for lord in lords:
                 for vassal_title, count in LORDS_VASSALS[lord.title].items():
-                    available = self.get_potential_vassals_for_lord(lord)
+                    available = self.get_potential_vassals_for_lord(lord, vassal_title)
                     for i in range(count):
                         if len(lord.vassals_of_title(vassal_title)) == count:
                             continue
@@ -327,6 +335,10 @@ class LordsManager:
                 print(f'Vassals count: {vassals_count}')
 
     def enough_lords(self):
+        """
+        Check if there is enough number od Nobleman of each Title to get
+        correct amount of vassals for each lord in game.
+        """
         real_numbners = {
             Title.count: len(self.get_lords_of_title(Title.count)),
             Title.baron: len(self.get_lords_of_title(Title.baron)),
@@ -351,6 +363,15 @@ class LordsManager:
         else:
             print('ok', counter)
             return True
+
+    def assign_free_vassals(self):
+        ronins = self.get_lords_without_liege()
+        ronins = {r for r in ronins if r.title is not Title.count}
+        for ronin in ronins:
+            pass
+
+    def make_marriages(self):
+        raise NotImplementedError
 
 
 if __name__ == '__main__':

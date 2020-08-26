@@ -353,16 +353,29 @@ class Application(tk.Tk):
 
     def configure_detail_button(self, text: str, function: Callable,
                                 event: tk.Event):
+        """
+        Set the correct callback for the detail_button according to the curently
+        active Listbox in main window. Button could open Nobleman-editing window
+        or Location-editing window.
+        """
         self.details_button.configure(text=text, command=partial(function, event))
 
     def lords_details(self, event: tk.Event):
-        name = event.widget.get(ACTIVE)  # self.lords_list
+        name = self.get_instance_name(event)
         instance = self.manager.get_lord_by_name(name)
         self.manager.convert_str_data_to_instances(instance)
         self.details_window(instance)
 
+    @staticmethod
+    def get_instance_name(event: tk.Event) -> str:
+        if isinstance(widget := event.widget, Listbox):
+            name = widget.get(ACTIVE)
+        else:  # Entry widget
+            name = widget.get()
+        return name
+
     def location_details(self, event: tk.Event):
-        name = event.widget.get(ACTIVE)  # self.locations_list
+        name = self.get_instance_name(event)
         instance = self.manager.get_location_by_name(name)
         self.details_window(instance)
 
@@ -496,10 +509,10 @@ class Application(tk.Tk):
         widget = Entry(container, textvariable=variable)
         return variable, widget
 
-    @staticmethod
-    def widget_from_instance_or_none(attr, container):
+    def widget_from_instance_or_none(self, attr, container):
         variable = StringVar(value='' if attr is None else attr.name)
         widget = Entry(container, textvariable=variable)
+        widget.bind('<Double-Button-1>', self.lords_details)
         return variable, widget
 
     def generate_action_widget(self, container, instance, name, variable,
@@ -682,7 +695,7 @@ class Application(tk.Tk):
             sex = Sex.man if lord.sex is Sex.woman else Sex.woman
             data = self.manager.get_lords_of_sex(sex)
         elif name == 'liege':
-            data = [noble for noble in self.manager._lords if noble > lord]
+            data = [noble for noble in self.manager.lords if noble > lord]
         elif name in ('_siblings', '_children', '_vassals'):
             potential = set(self.manager.lords)
             if name == '_vassals':
