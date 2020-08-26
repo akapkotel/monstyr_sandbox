@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from typing import Tuple
 from classes import *
 
 LORDS_FIEFS = {  # title: (min fiefs, max fiefs)

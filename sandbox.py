@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
-import arcade
 import random
-
-from typing import List, Optional
+import arcade
 
 from lords_manager import LordsManager
+from map_classes import *
 from functions import *
 from classes import *
-from enums import *
 
 
 get_sprites_at_point = arcade.get_sprites_at_point
@@ -35,7 +33,7 @@ class Sandbox(arcade.View):
     def __init__(self):
         super().__init__()
 
-        self.lords = LordsManager()
+        self.manager = LordsManager()
 
         self.ui_elements = arcade.SpriteList(is_static=False)
         self.terrain = arcade.SpriteList(is_static=True)
@@ -56,7 +54,8 @@ class Sandbox(arcade.View):
         for i in range(1, 3):
             for j in range(1, 3):
                 function = self.window.close
-                button = Button(i * 400, j * 400, 150, 50, arcade.color.WHITE)
+                button = Button(
+                    i * 400, j * 400, 150, 50, arcade.color.WHITE)
                 self.ui_elements.append(button)
 
     def on_show_view(self):
@@ -90,6 +89,7 @@ class Sandbox(arcade.View):
             self.cursor_pointed = pointed
 
     def get_pointed_sprite(self, x, y) -> Optional[CursorInteractive]:
+
         if (pointed_sprite := self.cursor_dragged) is None:
             if not (pointed_sprite := self.cursor_points(self.ui_elements, x, y)):
                 if not (pointed_sprite := self.cursor_points(self.locations, x, y)):

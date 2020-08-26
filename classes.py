@@ -1,14 +1,10 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
-import arcade
 
-from random import choice, randint
-from typing import List, Tuple, Set, Dict, Union, Optional, Callable
-from dataclasses import dataclass, field
-
-from functions import print_return
+from typing import List, Set, Dict, Union, Optional
 from enums import *
+
 
 RAGADAN = 'Ragada'
 
@@ -217,12 +213,6 @@ class Location:
         return self.__repr__()
 
 
-class Sprite(arcade.Sprite):
-
-    def __init__(self, visible: bool = True):
-        self.visible = visible
-
-
 class Counter:
     """
     Counter is a container for an int value, which allows increasing/decreasing
@@ -259,68 +249,3 @@ class Counter:
 
     def reverse(self):
         self.increasing = not self.increasing
-
-
-class CursorInteractive:
-    """Interface for all objects which are clickable etc."""
-
-    def __init__(self,
-                 active: bool = True,
-                 can_be_dragged: bool = False,
-                 function_on_left_click: Optional[Callable] = None,
-                 function_on_right_click: Optional[Callable] = None):
-        self.active = active
-        self.pointed = False
-        self.dragged = False
-        self.can_be_dragged = can_be_dragged
-        self.function_on_left_click = function_on_left_click
-        self.function_on_right_click = function_on_right_click
-
-    def __repr__(self):
-        return f'{self.__class__.__name__} id: {id(self)}'
-
-    def on_mouse_enter(self):
-        if not self.pointed:
-            print(f'Mouse over {self}')
-            self.pointed = True
-
-    def on_mouse_exit(self):
-        if self.pointed:
-            print(f'Mouse left {self}')
-            self.pointed = False
-
-    def on_mouse_press(self, button: int):
-        print(f'Mouse button {button} clicked on {self}')
-        if self.function_on_left_click is not None:
-            self.function_on_left_click()
-        self.dragged = self.can_be_dragged
-
-    def on_mouse_release(self, button: int):
-        print(f'Released button {button} on {self}')
-        self.dragged = False
-
-    def on_mouse_drag(self, x: float = None, y: float = None):
-        print(f'{self} was dragged to {x, y}')
-        if x is not None:
-            setattr(self, 'center_x', x)
-        if y is not None:
-            setattr(self, 'center_y', y)
-
-
-class SpriteSolidColor(arcade.SpriteSolidColor):
-    """Wrapper to instantiate SpriteSolidColor with position."""
-
-    def __init__(self, x: int, y: int, width: int, height: int, color):
-        super().__init__(width, height, color)
-        self.position = x, y
-
-
-class Button(SpriteSolidColor, CursorInteractive):
-
-    def __init__(self, x: int, y: int, width: int, height: int, color, function: Optional[Callable] = None):
-        super().__init__(x, y, width, height, color)
-        CursorInteractive.__init__(self, can_be_dragged=True, function_on_left_click=function)
-
-    def draw(self):
-        super().draw()
-

@@ -8,7 +8,7 @@ import tkinter.filedialog as fd
 
 from dbm import error
 from functools import partial
-from typing import Any, Iterable
+from typing import Any, Iterable, Tuple, Callable
 from tkinter import (
     DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, HORIZONTAL, VERTICAL,
     CENTER, END, IntVar, StringVar, Label, Entry, Spinbox, Listbox, Frame,
@@ -653,7 +653,7 @@ class Application(tk.Tk):
 
     def get_object_from_name(self,
                              value: str,
-                             attr_name: str) -> Union[Nobleman, Location, str, int]:
+                             attr_name: str) -> Union[Nobleman, Location]:
         """
         Cast widget value to correct type for attribute name.
         """
@@ -661,7 +661,6 @@ class Application(tk.Tk):
             return self.manager.get_lord_by_name(value)
         elif attr_name == '_fiefs':
             return self.manager.get_location_by_name(value)
-        # return int(value) if value.isalnum() else value
 
     def lords_listbox_window(self, instance, name: str, variable: Any,
                              widget=None):
