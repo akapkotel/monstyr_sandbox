@@ -14,7 +14,7 @@ from tkinter import (
     CENTER, END, IntVar, StringVar, Label, Entry, Spinbox, Listbox, Frame,
     LabelFrame, ACTIVE, SUNKEN, Button as TkButton
     )
-from functions import load_image_or_placeholder, plural, single_slashes
+from functions import load_image_or_placeholder, plural
 from classes import *
 from lords_manager import LordsManager
 
@@ -94,7 +94,7 @@ class Application(tk.Tk):
         self.locations_filter = None
 
         # handle to retrieve additional TopLevel windows opened by user:
-        self.extra_windows = {}
+        self.extra_windows = {Nobleman: {}, Location: {}}
         # ---- Sections of the Window ----
         sections_names = ['Lords in numbers:', 'Locations in numbers:',
                           'Actions:', 'Lords and fiefs:']
@@ -393,15 +393,17 @@ class Application(tk.Tk):
         or single Location, which allows to edit the data and save it.
         """
         window = tk.Toplevel()
-        self.register_extra_window(instance.id, window)
+        self.register_extra_window(instance, window)
         window.title(instance.name)
         window.protocol("WM_DELETE_WINDOW",
                         partial(self.close_details_window, instance))
         window.geometry('550x900')
+        self.generate_window_content(instance, window)
+
+    def generate_window_content(self, instance, window):
         # filled in step [1] and passed in step [2] to save method when user
         # clicks 'Save ...':
         data: List[Tuple] = []
-
         for i, name in enumerate(instance.__slots__[1:]):
             attr = getattr(instance, name)
             container = tk.Frame(window, relief=tk.GROOVE, borderwidth=1)
@@ -412,22 +414,31 @@ class Application(tk.Tk):
             container.pack(side=TOP, expand=True, fill=BOTH)
 
             data.append((name, attr, widget, variable))  # step 1
-
         AuthButton(window, text=f'Save {instance.__class__.__name__}',
                    command=lambda: self.save_instance(instance, data)).pack(
             side=TOP)  # step 2
 
-    def register_extra_window(self, id: int, window: tk.Toplevel):
-        self.extra_windows[id] = window
+    def register_extra_window(self,
+                              instance: Union[Nobleman, Location],
+                              window: tk.Toplevel):
+        """
+        Add new window reference to the self.extra_windows nested dict to allow
+        keeping track of opened additional windows, update their contents etc.
+        """
+        self.extra_windows[instance.__class__][instance.id] = window
 
-    def unregister_extra_window(self, id: int):
-        self.extra_windows[id].destroy()
-        del self.extra_windows[id]
+    def unregister_extra_window(self, instance: Union[Nobleman, Location]):
+        window_type = instance.__class__
+        self.extra_windows[window_type][instance.id].destroy()
+        del self.extra_windows[window_type][instance.id]
 
     def close_details_window(self, instance: Union[Nobleman, Location]):
-        """Close window and converts edited data to light strings format."""
+        """
+        Close window and converts edited data to lightweight formats to make
+        saved database shelve file small and quick-open-able.
+        """
         self.manager.prepare_for_save(instance)
-        self.unregister_extra_window(instance.id)
+        self.unregister_extra_window(instance)
 
     @staticmethod
     def generate_label(container, name) -> Label:
@@ -551,7 +562,8 @@ class Application(tk.Tk):
                        command=partial(self.lords_listbox_window, instance,
                                        name, variable)),
             AuthButton(container, text=delete_text,
-                       command=lambda: variable.set(value='')))
+                       command=lambda: variable.set(value=''))
+            )
 
     def generate_random_name(self, variable: StringVar, sex: Sex):
         variable.set(self.manager.random_lord_name(sex))
@@ -589,14 +601,35 @@ class Application(tk.Tk):
         widget.configure(image=photo)
         widget.photo = photo
 
-    def save_instance(self, instance: Union[Nobleman, Location],
+    def save_instance(self,
+                      instance: Union[Nobleman, Location],
                       data: List[Tuple]):
         for tuple_ in data:
             self.save_single_attribute(instance, tuple_)
         self.close_details_window(instance)
         self.manager.add(instance)
         # self.manager.save()  # TODO: uncomment when app is ready
+        self.refresh_windows()
+
+    def refresh_windows(self):
+        """
+        When object data in one extra-window is changed and saved, update
+        data in all other extra-windows currently opened.
+        """
+        print(self.extra_windows)
+        for window_class, windows in self.extra_windows.items():
+            obj = 'lord' if window_class is Nobleman else 'location'
+            func = eval(f'self.manager.get_{obj}_of_id')
+            for id, window in windows.items():
+                instance = func(id)
+                self.destroy_children_widgets(window)
+                self.generate_window_content(instance, window)
         self.update_widgets_values()
+
+    @staticmethod
+    def destroy_children_widgets(window):
+        for widget in window.winfo_children():
+            widget.destroy()
 
     def save_single_attribute(self, instance, tuple_):
         name, attribute, widget, variable = tuple_
@@ -653,11 +686,13 @@ class Application(tk.Tk):
 
     def get_object_from_name(self,
                              value: str,
-                             attr_name: str) -> Union[Nobleman, Location]:
+                             attr_name: str) -> Union[Nobleman, Location, str]:
         """
         Cast widget value to correct type for attribute name.
         """
-        if attr_name in LORDS_SETS:
+        if not value:  # empty Entry and StringVar contains empty string
+            return value
+        elif attr_name in LORDS_SETS:
             return self.manager.get_lord_by_name(value)
         elif attr_name == '_fiefs':
             return self.manager.get_location_by_name(value)

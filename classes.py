@@ -188,13 +188,13 @@ class Location:
                  id: int,
                  name: str = '',
                  picture: str = '',
-                 position: tuple = (0, 0),
+                 position: tuple = (500, 500),
                  location_type: LocationType = LocationType.village,
                  owner: Optional[Nobleman] = None,
                  population: int = 0,
                  soldiers: int = 0
                  ):
-        self.id: id
+        self.id: id = id
         self.picture = picture
         self.name = name or location_type.value
         self.position = position

@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 
-from random import randint, choice, random as random_float
-from functools import lru_cache
+from random import choice, random as random_float
 from enum import Enum
 
 
 class MyEnum(Enum):
 
     @classmethod
-    @lru_cache(maxsize=1)
     def hierarchy(cls):
         return {
             title: i for i, title in enumerate(cls)

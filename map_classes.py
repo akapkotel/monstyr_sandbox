@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
-from arcade import Sprite, SpriteSolidColor as ArcadeSpriteSolidColor
+from arcade import (Sprite, SpriteSolidColor as ArcadeSpriteSolidColor)
 from typing import Set, Optional, Callable, Union, Tuple, List
 
+from classes import Location
 
 # typing aliases:
 Color = Union[Tuple[int, int, int, int], Tuple[int, int, int], List[int]]
@@ -23,7 +24,7 @@ class Visible:
 
     @visible.setter
     def visible(self, value: bool):
-        self._visible = value
+        self.visible = value
 
 
 class Hierarchical:
@@ -33,7 +34,7 @@ class Hierarchical:
     with an objects and theirs children-objects simultaneously.
     """
 
-    def __init__(self, parent: Optional[VHO] = None):
+    def __init__(self, parent: Optional[Hierarchical] = None):
         self._parent: Optional[Hierarchical] = parent
         self._children: Optional[Set] = None
 
@@ -54,26 +55,25 @@ class Hierarchical:
     def children(self):
         return self._children
 
-    def add_child(self, child: VHO):
+    def add_child(self, child: Hierarchical):
         if self._children is None:
             self._children = set()
         self._children.add(child)
 
-    def remove_child(self, child: VHO):
+    def remove_child(self, child: Hierarchical):
         self._children.discard(child)
 
 
-VHO = Hierarchical
-
-
-class CursorInteractive:
+class CursorInteractive(Hierarchical):
     """Interface for all objects which are clickable etc."""
 
     def __init__(self,
                  active: bool = True,
                  can_be_dragged: bool = False,
                  function_on_left_click: Optional[Callable] = None,
-                 function_on_right_click: Optional[Callable] = None):
+                 function_on_right_click: Optional[Callable] = None,
+                 parent: Optional[Hierarchical] = None):
+        Hierarchical.__init__(self, parent)
         self.active = active
         self.pointed = False
         self.dragged = False
@@ -88,11 +88,19 @@ class CursorInteractive:
         if not self.pointed:
             print(f'Mouse over {self}')
             self.pointed = True
+            self._func_on_mouse_enter()
+
+    def _func_on_mouse_enter(self):
+        pass
 
     def on_mouse_exit(self):
         if self.pointed:
             print(f'Mouse left {self}')
             self.pointed = False
+            self._func_on_mouse_exit()
+
+    def _func_on_mouse_exit(self):
+        pass
 
     def on_mouse_press(self, button: int):
         print(f'Mouse button {button} clicked on {self}')
@@ -112,7 +120,7 @@ class CursorInteractive:
             setattr(self, 'center_y', y)
 
 
-class SpriteSolidColor(Visible, Hierarchical, ArcadeSpriteSolidColor):
+class SpriteSolidColor(ArcadeSpriteSolidColor):
     """Wrapper to instantiate SpriteSolidColor with position."""
 
     def __init__(self,
@@ -120,16 +128,12 @@ class SpriteSolidColor(Visible, Hierarchical, ArcadeSpriteSolidColor):
                  y: int,
                  width: int,
                  height: int,
-                 color: Color,
-                 visible: bool = True,
-                 parent: Hierarchical = None):
-        Visible.__init__(self, visible)
-        Hierarchical.__init__(self, parent)
+                 color: Color):
         ArcadeSpriteSolidColor.__init__(self, width, height, color)
         self.position = x, y
 
 
-class Button(SpriteSolidColor, CursorInteractive):
+class UiPanel(Visible, CursorInteractive, SpriteSolidColor):
 
     def __init__(self,
                  x: int,
@@ -137,19 +141,65 @@ class Button(SpriteSolidColor, CursorInteractive):
                  width: int,
                  height: int,
                  color: Color,
+                 visible: bool = True,
+                 active: bool = True,
+                 parent: Hierarchical = None):
+        Visible.__init__(self, visible)
+        CursorInteractive.__init__(self, active, parent=parent)
+        SpriteSolidColor.__init__(self, x, y, width, height, color)
+
+
+class Button(Visible, CursorInteractive, Sprite):
+    """
+    Simple button using static Sprite, interacting with mouse-cursor and
+    calling functions assigned to it. It can be a child of other Hierarchical
+    object.
+    """
+
+    def __init__(self,
+                 text: str,
+                 x: int,
+                 y: int,
                  function: Optional[Callable] = None,
                  visible: bool = True,
                  parent: Hierarchical = None):
-        SpriteSolidColor.__init__(self, x, y, width, height, color, visible, parent)
+        Visible.__init__(self, visible)
         CursorInteractive.__init__(self, can_be_dragged=True,
-                                   function_on_left_click=function)
+                                   function_on_left_click=function,
+                                   parent=parent)
+        texture = f'ui/{text.lower()} button.png'
+        Sprite.__init__(self, texture, center_x=x, center_y=y)
+        self.text = text
 
-    def draw(self):
-        super().draw()
 
-
-class Map(Hierarchical, CursorInteractive, Sprite):
+class MapIcon(Visible, CursorInteractive, Sprite):
     """
     Class for all map Sprites representing Locations in the game-world.
     """
-    pass
+
+    def __init__(self,
+                 location: Location,
+                 map_texture: str,
+                 visible: bool = True,
+                 parent: Optional[Hierarchical] = None,
+                 active: bool = True,
+                 can_be_dragged: bool = False,
+                 function_on_left_click: Optional[Callable] = None,
+                 function_on_right_click: Optional[Callable] = None):
+        """..."""
+        self.location: Location = location
+        self.x, self.y = location.position
+        Sprite.__init__(self, f'map_icons/{map_texture}', center_x=self.x,
+                        center_y=self.y)
+        Visible.__init__(self, visible)
+        CursorInteractive.__init__(self, active,
+                                   can_be_dragged,
+                                   function_on_left_click,
+                                   function_on_right_click,
+                                   parent=parent)
+
+    def on_mouse_press(self, button: int):
+        print(f'Mouse button {button} clicked on {self}')
+        if self.function_on_left_click is not None:
+            self.function_on_left_click(self.location)
+        self.dragged = self.can_be_dragged

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from functools import lru_cache
+from random import randint
 from typing import Tuple
 from classes import *
 
@@ -283,8 +285,8 @@ class LordsManager:
         collection.discard(discarded)
         self.discarded.add(discarded)
 
-    def collection(self, obj: Union[Nobleman, Location]) -> Union[
-        Set[Nobleman], Set[Location]]:
+    def collection(self,
+                   obj: Union[Nobleman, Location]) -> Union[Set[Nobleman], Set[Location]]:
         return set(self.lords) if isinstance(obj, Nobleman) else set(self.locations)
 
     def clear(self):

@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 
-import random
 import arcade
+
+from random import randint, uniform
+from arcade import SpriteList
+from arcade.color import BLACK, DARK_MOSS_GREEN
+from functools import partial
 
 from lords_manager import LordsManager
 from map_classes import *
@@ -15,64 +19,51 @@ get_sprites_at_point = arcade.get_sprites_at_point
 SCREEN_WIDTH, SCREEN_HEIGHT = get_screen_size()
 SCREEN_TITLE = 'Monastyr Sandbox'
 FULL_SCREEN = False
-LOADING = 'loading view'
-SANDBOX = 'sandbox view'
+LOADING_VIEW = 'loading view'
+SANDBOX_VIEW = 'sandbox view'
+MENU_VIEW = 'menu view'
 
 
 class Application(arcade.Window):
-    """ Main window"""
+    """
+    Main window. It handles basic, commonly-shared by all Views logic and
+    only delegates some tasks to the Views methods and uses Views
+    properties.
+    """
 
     def __init__(self, width, height, title):
         super().__init__(width, height, title)
-        self.views = {LOADING: LoadingScreen(), SANDBOX: Sandbox()}
-        self.show_view(self.views[LOADING])
-
-
-class Sandbox(arcade.View):
-
-    def __init__(self):
-        super().__init__()
-
-        self.manager = LordsManager()
-
-        self.ui_elements = arcade.SpriteList(is_static=False)
-        self.terrain = arcade.SpriteList(is_static=True)
-        self.locations = arcade.SpriteList(is_static=True)
+        self.views = {
+            LOADING_VIEW: LoadingScreen(), MENU_VIEW: Menu(),
+            SANDBOX_VIEW: Sandbox()
+        }
 
         # --- cursor-related ---
         self.cursor = (0, 0, 0, 0)
         self.cursor_pointed: Optional[CursorInteractive] = None
         self.cursor_dragged: Optional[CursorInteractive] = None
 
-        self.testing_ideas()  # TODO: discard this before release
-
-        # to draw and update everything with one instruction in on_draw() and on_update() methods:
-        self.drawn = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
-        self.updated = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
-
-    def testing_ideas(self):
-        for i in range(1, 3):
-            for j in range(1, 3):
-                function = self.window.close
-                button = Button(
-                    i * 400, j * 400, 150, 50, arcade.color.WHITE)
-                self.ui_elements.append(button)
-
-    def on_show_view(self):
-        self.window.set_mouse_visible(True)
-        self.window.background_color = arcade.color.WINE
+    def switch_view(self, view_name: str, loading: bool = False):
+        """
+        Wrapper allowing using LoadingScreen between Views.
+        """
+        if loading:
+            self.show_view(LoadingScreen(view_name))
+        else:
+            view = self.views[view_name]
+            self.show_view(view)
 
     def on_draw(self):
         """ Draw everything """
-        self.window.clear()
-        for obj in self.drawn:
-            obj.draw()
+        self.clear()
+
+        self._current_view.on_draw()
 
     def on_update(self, dt):
         """ Update everything """
-        for obj in self.updated:
-            obj.update()
-        self.update_cursor()
+        self._current_view.on_update(dt)
+        if self._mouse_visible:
+            self.update_cursor()
 
     def update_cursor(self):
         x, y, *_ = self.cursor
@@ -80,26 +71,40 @@ class Sandbox(arcade.View):
         self.update_mouse_pointed(pointed)
 
     def update_mouse_pointed(self, pointed: Optional[CursorInteractive]):
+        if self.cursor_pointed not in (None, pointed):
+            self.cursor_pointed.on_mouse_exit()
         try:
             pointed.on_mouse_enter()
         except AttributeError:
-            if self.cursor_pointed is not pointed:
-                self.cursor_pointed.on_mouse_exit()
+            pass
         finally:
             self.cursor_pointed = pointed
 
     def get_pointed_sprite(self, x, y) -> Optional[CursorInteractive]:
-
+        # Since we have many spritelists which are drawn in some
+        # hierarchical order, we must iterate over them catching
+        # cursor-pointed elements in backward order: last draw, is first to
+        # be mouse-pointed (it lies on the top)
         if (pointed_sprite := self.cursor_dragged) is None:
-            if not (pointed_sprite := self.cursor_points(self.ui_elements, x, y)):
-                if not (pointed_sprite := self.cursor_points(self.locations, x, y)):
-                    if not (pointed_sprite := self.cursor_points(self.terrain, x, y)):
-                        return
+            for drawn in self._current_view.drawn[::-1]:
+                if not (pointed_sprite := self.cursor_points(drawn, x, y)):
+                    continue
+                else:
+                    break
+            else:
+                return
         return pointed_sprite if pointed_sprite.active else None
 
     @staticmethod
-    def cursor_points(sprites: arcade.SpriteList, x, y) -> Optional[CursorInteractive]:
-        return pointed[0] if (pointed := get_sprites_at_point((x, y), sprites)) else None
+    def cursor_points(sprites: SpriteList, x, y) -> Optional[CursorInteractive]:
+        # Since our Sprites can have 'children' e.g. Buttons, which should
+        # be first to interact with cursor, we discard all parents and seek
+        # for first child, which is pointed instead:
+        if pointed := get_sprites_at_point((x, y), sprites):
+            s: CursorInteractive
+            for sprite in (s for s in pointed if not s.children):
+                return sprite
+        return None
 
     def on_mouse_motion(self, x: float, y: float, dx: float, dy: float):
         self.cursor = x, y, dx, dy
@@ -121,11 +126,134 @@ class Sandbox(arcade.View):
             self.cursor_pointed.on_mouse_drag(x, y)
 
     def on_key_press(self, symbol: int, modifiers: int):
-        self.window.show_view(self.window.views[LOADING])
+        self.switch_view(MENU_VIEW)
+
+
+class Sandbox(arcade.View):
+    """Main view displaying actual map."""
+
+    def __init__(self):
+        super().__init__()
+
+        self.manager = LordsManager()
+        self.manager.load()
+
+        self.terrain = SpriteList(is_static=True)
+        self.locations: SpriteList = self.create_locations_spritelist()
+        self.ui_elements: SpriteList = self.create_ui_elements()
+
+        self.testing_ideas()  # TODO: discard this before release
+
+        # to draw and update everything with one instruction in on_draw()
+        # and on_update() methods:
+        self.drawn = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
+        self.updated = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
+
+    def create_ui_elements(self) -> SpriteList:
+        ui = SpriteList(is_static=False)
+
+        width = SCREEN_WIDTH // 5
+        x = SCREEN_WIDTH - (width // 2)
+        y = SCREEN_HEIGHT // 2
+        right_panel = UiPanel(x, y, width, SCREEN_HEIGHT, BLACK)
+
+        function = partial(self.window.switch_view, MENU_VIEW)
+        exit_button = Button('quit', x, 75, function, parent=right_panel)
+
+        ui.extend([right_panel, exit_button])
+        return ui
+
+    def create_locations_spritelist(self) -> SpriteList:
+        locations = SpriteList(is_static=True)
+
+        for location in self.manager.locations:
+            location_name = location.type.value
+            texture_name = f'{location_name}_{randint(1, 4)}.png'
+            map_icon = MapIcon(location, texture_name,
+                               function_on_left_click=
+                               self.open_location_window)
+            locations.append(map_icon)
+        return locations
+
+    def testing_ideas(self):
+        pass
+
+    def on_show_view(self):
+        self.window.set_mouse_visible(True)
+        self.window.background_color = DARK_MOSS_GREEN
+
+    def on_update(self, delta_time: float):
+        for obj in self.updated:
+            obj.update()
+
+    def on_draw(self):
+        for obj in self.drawn:
+            obj.draw()
+
+    def open_location_window(self, location: Location):
+        print(f'Location name: {location.name}')
+
+        x, y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        width, height = (SCREEN_WIDTH - 300) * 0.7, SCREEN_HEIGHT * 0.7
+        location_window = UiPanel(x, y, int(width), int(height), BLACK, False)
+
+        close_btn = self.new_close_button(height, location_window, width, x, y)
+
+        self.ui_elements.extend([location_window, close_btn])
+
+    def new_close_button(self, height, location_window, width, x, y) -> Button:
+        x, y = x - 30 + (width // 2), y - 30 + (height // 2)
+        function = partial(self.close_window, location_window)
+        return Button('close', x, y, function, parent=location_window)
+
+    def close_window(self, window: UiPanel):
+        for child in window.children:
+            self.ui_elements.remove(child)
+        self.ui_elements.remove(window)
+
+
+class Menu(arcade.View):
+
+    def __init__(self):
+        super().__init__()
+        self.buttons = SpriteList(is_static=True)
+
+        names = ['Quit', 'Lords manager', 'Open map']
+        functions = [
+            self.window.close,
+            partial(self.window.switch_view, MENU_VIEW, True),
+            partial(self.window.switch_view, SANDBOX_VIEW, True)
+        ]
+
+        width = SCREEN_WIDTH//2
+        for i, name in enumerate(names):
+            self.buttons.append(
+                Button(names[i], width, 300 * (i + 1), functions[i])
+            )
+
+        self.drawn = [self.buttons]
+        self.updated = [self.buttons]
+
+    def on_show_view(self):
+        self.window.set_mouse_visible(True)
+        self.window.background_color = arcade.color.AIR_FORCE_BLUE
+
+    def on_draw(self):
+        """ Draw everything """
+        self.window.clear()
+        self.buttons.draw()
+
+    def on_update(self, dt):
+        """ Update everything """
+        self.buttons.update()
 
 
 class LoadingScreen(arcade.View):
     progress = 0
+
+    def __init__(self, next_view: str = MENU_VIEW):
+        super().__init__()
+        self.next_view = next_view
 
     def on_show_view(self):
         self.progress = 0
@@ -133,10 +261,9 @@ class LoadingScreen(arcade.View):
         self.window.background_color = arcade.color.BLACK
 
     def on_update(self, delta_time: float):
-        self.progress += random.uniform(0.1, 1.0)
+        self.progress += uniform(0.3, 3.0)
         if self.progress > 100:
-            sandbox = self.window.views[SANDBOX]
-            self.window.show_view(sandbox)
+            self.window.switch_view(self.next_view)
 
     def on_draw(self):
         self.window.clear()
@@ -152,8 +279,7 @@ class LoadingScreen(arcade.View):
 
 
 if __name__ == "__main__":
-    window = Application(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
-    window.center_window()
-    loading = LoadingScreen()
-    window.show_view(loading)
+    application = Application(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    application.center_window()
+    application.switch_view(MENU_VIEW, loading=True)
     arcade.run()

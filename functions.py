@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Tuple, Set
+from typing import Tuple
 from functools import wraps
 
 
@@ -44,6 +44,7 @@ def get_screen_size() -> Tuple[int, int]:
 def load_image_or_placeholder(filename: str):
     import os
     from tkinter import PhotoImage
+    filename = filename.replace('_', ' ')
     if os.path.exists(filename):
         return PhotoImage(file=filename)
     return PhotoImage(file='no_image.png')
