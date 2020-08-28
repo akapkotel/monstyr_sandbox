@@ -363,8 +363,12 @@ class Application(tk.Tk):
     def lords_details(self, event: tk.Event):
         name = self.get_instance_name(event)
         instance = self.manager.get_lord_by_name(name)
-        self.manager.convert_str_data_to_instances(instance)
-        self.details_window(instance)
+        self.open_new_or_show_opened_window(instance)
+
+    def location_details(self, event: tk.Event):
+        name = self.get_instance_name(event)
+        instance = self.manager.get_location_by_name(name)
+        self.open_new_or_show_opened_window(instance)
 
     @staticmethod
     def get_instance_name(event: tk.Event) -> str:
@@ -374,10 +378,18 @@ class Application(tk.Tk):
             name = widget.get()
         return name
 
-    def location_details(self, event: tk.Event):
-        name = self.get_instance_name(event)
-        instance = self.manager.get_location_by_name(name)
-        self.details_window(instance)
+    def open_new_or_show_opened_window(self, instance):
+        if window := self.window_for_instance_already_opened(instance):
+            window.lift()
+        else:
+            self.manager.convert_str_data_to_instances(instance)
+            self.details_window(instance)
+
+    def window_for_instance_already_opened(self, instance) -> Optional[tk.Toplevel]:
+        try:
+            return self.extra_windows[type(instance)][instance.id]
+        except KeyError:
+            return
 
     def create_new(self, object_type: Union[type(Nobleman), type(Location)]):
         if object_type == Nobleman:

@@ -159,7 +159,13 @@ class LordsManager:
     def prepare_location_to_save(location: Location) -> Location:
         return location
 
-    def convert_str_data_to_instances(self, lord: Nobleman):
+    def convert_str_data_to_instances(self, instance: Union[Nobleman, Location]):
+        if isinstance(instance, Nobleman):
+            self.convert_str_data_to_nobleman(instance)
+        else:
+            self.convert_str_data_to_location(instance)
+
+    def convert_str_data_to_nobleman(self, lord: Nobleman):
         if lord.spouse:
             lord._spouse = self.get_lord_of_id(lord.spouse)
         if lord.liege:
@@ -168,6 +174,9 @@ class LordsManager:
         lord._children = {self.get_lord_of_id(c) for c in lord.children}
         lord._siblings = {self.get_lord_of_id(s) for s in lord.siblings}
         lord._fiefs = {self.get_location_of_id(f) for f in lord.fiefs}
+
+    def convert_str_data_to_location(self, location: Location):
+        pass
 
     @staticmethod
     def _load_data_from_db() -> Tuple[Dict[int, Nobleman], Dict[int, Location]]:
@@ -189,8 +198,11 @@ class LordsManager:
     def random_lord(self) -> Nobleman:
         return choice([lord for lord in self.lords])
 
-    def get_lord_of_id(self, id: int) -> Nobleman:
-        return self._lords[id]
+    def get_lord_of_id(self, id: Union[id, Nobleman]) -> Nobleman:
+        try:
+            return self._lords[id]
+        except KeyError:
+            return self._lords[id.id]
 
     @lru_cache(maxsize=2048)
     def get_lord_by_name(self, name: str) -> Nobleman:

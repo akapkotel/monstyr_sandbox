@@ -1,13 +1,20 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
-from arcade import (Sprite, SpriteSolidColor as ArcadeSpriteSolidColor)
+
 from typing import Set, Optional, Callable, Union, Tuple, List
+from arcade import (
+    Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor, draw_text
+)
+from arcade.color import WHITE
 
 from classes import Location
 
 # typing aliases:
 Color = Union[Tuple[int, int, int, int], Tuple[int, int, int], List[int]]
+
+
+ALPHA: Color = (0, 0, 0, 0)
 
 
 class Visible:
@@ -48,7 +55,7 @@ class Hierarchical:
     @parent.setter
     def parent(self, parent: Optional[Hierarchical]):
         if parent is None:
-            self._parent.remove_child(self)
+            self._parent.discard_child(self)
         self._parent = parent
 
     @property
@@ -60,7 +67,7 @@ class Hierarchical:
             self._children = set()
         self._children.add(child)
 
-    def remove_child(self, child: Hierarchical):
+    def discard_child(self, child: Hierarchical):
         self._children.discard(child)
 
 
@@ -149,6 +156,28 @@ class UiPanel(Visible, CursorInteractive, SpriteSolidColor):
         SpriteSolidColor.__init__(self, x, y, width, height, color)
 
 
+class UiText(Visible, CursorInteractive, SpriteSolidColor):
+
+    def __init__(self,
+                 text: str,
+                 x: int,
+                 y: int,
+                 width: int,
+                 height: int,
+                 color: Color,
+                 visible: bool = True,
+                 active: bool = True,
+                 parent: Hierarchical = None):
+        Visible.__init__(self, visible)
+        CursorInteractive.__init__(self, active, parent=parent)
+        SpriteSolidColor.__init__(self, x, y, width, height, color)
+        self.text = text
+
+    def draw(self):
+        super().draw()
+        draw_text(self.text, self.center_x, self.center_y, WHITE, self.height)
+
+
 class Button(Visible, CursorInteractive, Sprite):
     """
     Simple button using static Sprite, interacting with mouse-cursor and
@@ -203,3 +232,25 @@ class MapIcon(Visible, CursorInteractive, Sprite):
         if self.function_on_left_click is not None:
             self.function_on_left_click(self.location)
         self.dragged = self.can_be_dragged
+
+
+class MapTextLabel(UiText):
+
+    def __init__(self,
+                 text: str,
+                 x: int,
+                 y: int,
+                 width: int,
+                 height: int,
+                 visible: bool = True,
+                 active: bool = True,
+                 parent: Hierarchical = None):
+        UiText.__init__(self, text, x, y, width, height, ALPHA, visible,
+                        active, parent)
+
+
+class UiSpriteList(SpriteList):
+    """
+    Wrapper for SpriteLists containing only UiPanels and Buttons used to
+    cheaply identify them in on_draw() to call their draw() methods.
+    """

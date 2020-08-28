@@ -22,7 +22,7 @@ FULL_SCREEN = False
 LOADING_VIEW = 'loading view'
 SANDBOX_VIEW = 'sandbox view'
 MENU_VIEW = 'menu view'
-
+ALPHA = (0, 0, 0, 0)
 
 class Application(arcade.Window):
     """
@@ -56,8 +56,13 @@ class Application(arcade.Window):
     def on_draw(self):
         """ Draw everything """
         self.clear()
-
-        self._current_view.on_draw()
+        view = self._current_view
+        view.on_draw()
+        if hasattr(view, 'drawn'):
+            drawn = view.drawn
+            for spritelist in (s for s in drawn if isinstance(s, UiSpriteList)):
+                for elem in spritelist:
+                    elem.draw()
 
     def on_update(self, dt):
         """ Update everything """
@@ -140,7 +145,8 @@ class Sandbox(arcade.View):
 
         self.terrain = SpriteList(is_static=True)
         self.locations: SpriteList = self.create_locations_spritelist()
-        self.ui_elements: SpriteList = self.create_ui_elements()
+        self.map_labels = UiSpritesList = self.create_map_labels()
+        self.ui_elements: UiSpritesList = self.create_ui_elements()
 
         self.testing_ideas()  # TODO: discard this before release
 
@@ -148,20 +154,6 @@ class Sandbox(arcade.View):
         # and on_update() methods:
         self.drawn = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
         self.updated = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
-
-    def create_ui_elements(self) -> SpriteList:
-        ui = SpriteList(is_static=False)
-
-        width = SCREEN_WIDTH // 5
-        x = SCREEN_WIDTH - (width // 2)
-        y = SCREEN_HEIGHT // 2
-        right_panel = UiPanel(x, y, width, SCREEN_HEIGHT, BLACK)
-
-        function = partial(self.window.switch_view, MENU_VIEW)
-        exit_button = Button('quit', x, 75, function, parent=right_panel)
-
-        ui.extend([right_panel, exit_button])
-        return ui
 
     def create_locations_spritelist(self) -> SpriteList:
         locations = SpriteList(is_static=True)
@@ -174,6 +166,28 @@ class Sandbox(arcade.View):
                                self.open_location_window)
             locations.append(map_icon)
         return locations
+
+    def create_map_labels(self) -> UiSpriteList:
+        map_labels = UiSpriteList(is_static=True)
+        for location in self.manager.locations:
+            x, y = location.position
+            label = MapTextLabel(location.name, x + 40, y, 100, 20, active=False)
+            map_labels.append(label)
+        return map_labels
+
+    def create_ui_elements(self) -> UiSpriteList:
+        ui = UiSpriteList(is_static=False)
+
+        width = SCREEN_WIDTH // 5
+        x = SCREEN_WIDTH - (width // 2)
+        y = SCREEN_HEIGHT // 2
+        right_panel = UiPanel(x, y, width, SCREEN_HEIGHT, BLACK)
+
+        function = partial(self.window.switch_view, MENU_VIEW)
+        exit_button = Button('quit', x, 75, function, parent=right_panel)
+
+        ui.extend([right_panel, exit_button])
+        return ui
 
     def testing_ideas(self):
         pass
@@ -195,11 +209,14 @@ class Sandbox(arcade.View):
 
         x, y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
         width, height = (SCREEN_WIDTH - 300) * 0.7, SCREEN_HEIGHT * 0.7
-        location_window = UiPanel(x, y, int(width), int(height), BLACK, False)
 
+        location_window = UiPanel(x, y, int(width), int(height), BLACK, False)
+        location_name = UiText(
+            location.name, x, y, int(width), 20, BLACK, parent=location_window
+        )
         close_btn = self.new_close_button(height, location_window, width, x, y)
 
-        self.ui_elements.extend([location_window, close_btn])
+        self.ui_elements.extend([location_window, location_name, close_btn])
 
     def new_close_button(self, height, location_window, width, x, y) -> Button:
         x, y = x - 30 + (width // 2), y - 30 + (height // 2)
