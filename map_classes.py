@@ -6,7 +6,7 @@ from typing import Set, Optional, Callable, Union, Tuple, List
 from arcade import (
     Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor, draw_text
 )
-from arcade.color import WHITE
+from arcade.color import WHITE, BLACK
 
 from classes import Location
 
@@ -120,7 +120,6 @@ class CursorInteractive(Hierarchical):
         self.dragged = False
 
     def on_mouse_drag(self, x: float = None, y: float = None):
-        print(f'{self} was dragged to {x, y}')
         if x is not None:
             setattr(self, 'center_x', x)
         if y is not None:
@@ -164,13 +163,14 @@ class UiText(Visible, CursorInteractive, SpriteSolidColor):
                  y: int,
                  width: int,
                  height: int,
-                 color: Color,
+                 text_color: Color = BLACK,
+                 background_color: Color = ALPHA,
                  visible: bool = True,
                  active: bool = True,
                  parent: Hierarchical = None):
         Visible.__init__(self, visible)
         CursorInteractive.__init__(self, active, parent=parent)
-        SpriteSolidColor.__init__(self, x, y, width, height, color)
+        SpriteSolidColor.__init__(self, x, y, width, height, background_color)
         self.text = text
 
     def draw(self):
@@ -242,11 +242,12 @@ class MapTextLabel(UiText):
                  y: int,
                  width: int,
                  height: int,
+                 text_color: Color = WHITE,
                  visible: bool = True,
                  active: bool = True,
                  parent: Hierarchical = None):
-        UiText.__init__(self, text, x, y, width, height, ALPHA, visible,
-                        active, parent)
+        UiText.__init__(self, text, x, y, width, height, text_color,
+                        visible=visible, active=active, parent=parent)
 
 
 class UiSpriteList(SpriteList):

@@ -1,38 +1,39 @@
 #!/usr/bin/env python
 
+import os
+
 from typing import Tuple
 from functools import wraps
 
+ENGLISH = 'english'
+POLISH = 'polish'
 
-def localize(text: str) -> str:
-    return {
-        'locations total': 'wszystkie', 'villages': 'wsie',
-        'towns:': 'miasteczka', 'cities': 'miasta',
-        'palaces': 'pałace', 'windmills': 'wiatraki',
-        'watermills': 'młyny wodne', 'wineries': 'winnice',
-        'breweries': 'browary', 'mines': 'kopalnie',
-        'quarries': 'kamieniołomy', 'churches': 'kościoły',
-        'hideouts': 'kryjóœki', 'castles': 'zamki',
-        'millitary posts': 'stanice wosjkowe',
-        'fortesses': 'fortece', 'manufactures': 'manufaktury',
-        'stables': 'hodowle koni', 'hospitals': 'szpitale',
-        'fortified towers': 'baszty', 'castellums': 'kasztele',
-        'granges': 'folwarki', 'plantations': 'plantacje',
-        'shipyards': 'stocznie'
-    }[text]
+LANGUAGES = {}
+LANG_DIR = 'languages/'
+for lang_file in os.listdir(LANG_DIR):
+    lang_dict = LANGUAGES[lang_file.rstrip('.txt')] = {}
+    with open(LANG_DIR + lang_file, 'r') as file:
+        for line in file.readlines():
+            key, value = line.rstrip('\n').split(' = ')
+            lang_dict[key] = value
 
 
-def plural(word: str) -> str:
-    if word.endswith('bey'):
-        return word + 's'
+def localize(text: str, language: str) -> str:
+    return LANGUAGES[language][text]
+
+
+def plural(word: str, language: str = POLISH) -> str:
+    if word.endswith(('e', 'bey')):
+        word += 's'
     elif word.endswith('y'):
-        return word.rstrip('y') + 'ies'
-    elif word.endswith('e'):
-        return word + 's'
+        word = word.rstrip('y') + 'ies'
     elif word.endswith(('ch', 's')):
-        return word + 'es'
+        word = word + 'es'
     else:
-        return word + 's'
+        word = word + 's'
+    if language != ENGLISH:
+        return localize(word, language)
+    return word
 
 
 def get_screen_size() -> Tuple[int, int]:
@@ -44,7 +45,7 @@ def get_screen_size() -> Tuple[int, int]:
 def load_image_or_placeholder(filename: str):
     import os
     from tkinter import PhotoImage
-    filename = filename.replace('_', ' ')
+    # filename.replace('_', ' ')
     if os.path.exists(filename):
         return PhotoImage(file=filename)
     return PhotoImage(file='no_image.png')
@@ -57,7 +58,3 @@ def print_return(func):
         print(returned)
         return returned
     return wrapper
-
-
-def single_slashes(path: str) -> str:
-    return path.replace('\\\\', "\\")

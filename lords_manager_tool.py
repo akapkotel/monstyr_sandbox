@@ -63,10 +63,11 @@ class AuthListbox(Listbox):
 
 class Application(tk.Tk):
 
-    def __init__(self):
+    def __init__(self, language: str):
         super().__init__()
         self.wm_title(WINDOW_TITLE)
 
+        self.language = language
         self.manager = LordsManager()
         self.sections: Dict[str, tk.LabelFrame]
 
@@ -128,7 +129,8 @@ class Application(tk.Tk):
             disabledforeground='black', state=DISABLED, justify=CENTER
             ).grid(column=column.next(), row=row())
         for title, value in self.lords_by_titles.items():
-            label = Label(section, text=f'{plural(title.value).title()}:')
+            text = plural(title.value, self.language)
+            label = Label(section, text=f'{text.title()}:')
             label.grid(column=column.next(), row=row())
             label.bind('<Button-1>', partial(self.change_lords_filter, title))
             Entry(section, textvariable=value, width=4,
@@ -186,7 +188,8 @@ class Application(tk.Tk):
             if column() == 18:
                 column.restart()
                 row.next()
-            label = Label(section, text=f'{plural(location.value).title()}:')
+            text = plural(location.value, self.language)
+            label = Label(section, text=f'{text.title()}:')
             label.grid(column=column.next(), row=row())
             label.bind('<Button-1>',
                        partial(self.change_locations_filter, location))
@@ -199,14 +202,14 @@ class Application(tk.Tk):
         """Display numbers of Locations of different types."""
         section = self.sections['Actions:']
 
-        AuthButton(section, command=partial(self.create_new, Nobleman),
+        AuthButton(section, command=partial(self.new_instance_and_window, Nobleman),
                    text='Add new lord',
                    state=self.sdb_file_exists()).pack(side=LEFT)
 
         TkButton(section, command=self.load_data, text='Reload data',
                  state=self.sdb_file_exists()).pack(side=LEFT, padx=380)
 
-        AuthButton(section, command=partial(self.create_new, Location),
+        AuthButton(section, command=partial(self.new_instance_and_window, Location),
                    text='Add new location',
                    state=self.sdb_file_exists()).pack(side=RIGHT)
 
@@ -391,7 +394,7 @@ class Application(tk.Tk):
         except KeyError:
             return
 
-    def create_new(self, object_type: Union[type(Nobleman), type(Location)]):
+    def new_instance_and_window(self, object_type: Union[type(Nobleman), type(Location)]):
         if object_type == Nobleman:
             instance = Nobleman(len(self.manager._lords), 'ADD NAME',
                                 nationality=RAGADAN)
@@ -405,18 +408,21 @@ class Application(tk.Tk):
         or single Location, which allows to edit the data and save it.
         """
         window = tk.Toplevel()
-        self.register_extra_window(instance, window)
+        window.geometry('550x900')
         window.title(instance.name)
         window.protocol("WM_DELETE_WINDOW",
                         partial(self.close_details_window, instance))
-        window.geometry('550x900')
+        self.register_extra_window(instance, window)
         self.generate_window_content(instance, window)
 
-    def generate_window_content(self, instance, window):
+    def generate_window_content(self,
+                                instance: Union[Nobleman, Location],
+                                window: tk.Toplevel):
         # filled in step [1] and passed in step [2] to save method when user
         # clicks 'Save ...':
         data: List[Tuple] = []
-        for i, name in enumerate(instance.__slots__[1:]):
+        no_widgets = ('id', 'map_icon')
+        for name in (n for n in instance.__slots__ if n not in no_widgets):
             attr = getattr(instance, name)
             container = tk.Frame(window, relief=tk.GROOVE, borderwidth=1)
             label = self.generate_label(container, name)
@@ -580,15 +586,15 @@ class Application(tk.Tk):
     def generate_random_name(self, variable: StringVar, sex: Sex):
         variable.set(self.manager.random_lord_name(sex))
 
-    def set_widget_value_to_listbox_value(self, widget: Listbox,
+    @staticmethod
+    def set_widget_value_to_listbox_value(widget: Listbox,
                                           listbox: Listbox, event: tk.Event):
-        # instance = self.get_listbox_selected_value(event, listbox)
         name = listbox.get(f"@{event.x},{event.y}")
         widget.insert(END, name)
 
-    def set_variable_value_to_listbox_value(self, variable: Any,
+    @staticmethod
+    def set_variable_value_to_listbox_value(variable: Any,
                                             listbox: Listbox, event: tk.Event):
-        # name = self.get_listbox_selected_value(event, listbox)
         name = listbox.get(f"@{event.x},{event.y}")
         try:
             variable.set(name)
@@ -620,7 +626,7 @@ class Application(tk.Tk):
             self.save_single_attribute(instance, tuple_)
         self.close_details_window(instance)
         self.manager.add(instance)
-        # self.manager.save()  # TODO: uncomment when app is ready
+        self.manager.save()  # TODO: uncomment when app is ready
         self.refresh_windows()
 
     def refresh_windows(self):
@@ -789,5 +795,7 @@ class Application(tk.Tk):
 
 
 if __name__ == '__main__':
-    app = Application()
+    with open('config.txt', 'r') as config:
+        language = config.readline().rstrip('\n')
+    app = Application(language)
     app.mainloop()

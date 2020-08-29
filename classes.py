@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
-
+from random import randint
 from typing import List, Set, Dict, Union, Optional
 from enums import *
 
@@ -117,12 +117,17 @@ class Nobleman:
         self._fiefs.clear()
 
     @property
+    def name(self) -> str:
+        return self.title_and_name
+    @property
     def first_name(self) -> str:
         return self.full_name.split(' ')[0]
 
     @property
-    def name(self) -> str:
-        return self.title_and_name
+    def prefix(self):
+        if len(splitted := self.full_name.split(' ')) == 3:
+            return splitted[1]
+        return ' '.join(splitted[1:3])
 
     @property
     def family_name(self) -> str:
@@ -181,8 +186,8 @@ class Nobleman:
 
 class Location:
 
-    __slots__ = ['id', 'name', 'picture', 'position', 'type', 'owner',
-                 'faction', 'population', 'soldiers', 'description']
+    __slots__ = ['id', 'map_icon', 'name', 'picture', 'position', 'type',
+                 'owner', 'faction', 'population', 'soldiers', 'description']
 
     def __init__(self,
                  id: int,
@@ -197,6 +202,7 @@ class Location:
         self.id: id = id
         self.picture = picture
         self.name = name or location_type.value
+        self.map_icon = f'{self.name}_{randint(1, 4)}.png'
         self.position = position
         self.type = location_type
         self.owner = owner

@@ -3,8 +3,7 @@
 import arcade
 
 from random import randint, uniform
-from arcade import SpriteList
-from arcade.color import BLACK, DARK_MOSS_GREEN
+from arcade.color import GREEN, DARK_MOSS_GREEN
 from functools import partial
 
 from lords_manager import LordsManager
@@ -22,7 +21,7 @@ FULL_SCREEN = False
 LOADING_VIEW = 'loading view'
 SANDBOX_VIEW = 'sandbox view'
 MENU_VIEW = 'menu view'
-ALPHA = (0, 0, 0, 0)
+
 
 class Application(arcade.Window):
     """
@@ -78,12 +77,9 @@ class Application(arcade.Window):
     def update_mouse_pointed(self, pointed: Optional[CursorInteractive]):
         if self.cursor_pointed not in (None, pointed):
             self.cursor_pointed.on_mouse_exit()
-        try:
+        if pointed is not None:
             pointed.on_mouse_enter()
-        except AttributeError:
-            pass
-        finally:
-            self.cursor_pointed = pointed
+        self.cursor_pointed = pointed
 
     def get_pointed_sprite(self, x, y) -> Optional[CursorInteractive]:
         # Since we have many spritelists which are drawn in some
@@ -159,9 +155,7 @@ class Sandbox(arcade.View):
         locations = SpriteList(is_static=True)
 
         for location in self.manager.locations:
-            location_name = location.type.value
-            texture_name = f'{location_name}_{randint(1, 4)}.png'
-            map_icon = MapIcon(location, texture_name,
+            map_icon = MapIcon(location, location.map_icon,
                                function_on_left_click=
                                self.open_location_window)
             locations.append(map_icon)
@@ -171,7 +165,8 @@ class Sandbox(arcade.View):
         map_labels = UiSpriteList(is_static=True)
         for location in self.manager.locations:
             x, y = location.position
-            label = MapTextLabel(location.name, x + 40, y, 100, 20, active=False)
+            label = MapTextLabel(location.name, x + 40, y - 10, 100, 20,
+                                 active=False)
             map_labels.append(label)
         return map_labels
 
@@ -212,7 +207,7 @@ class Sandbox(arcade.View):
 
         location_window = UiPanel(x, y, int(width), int(height), BLACK, False)
         location_name = UiText(
-            location.name, x, y, int(width), 20, BLACK, parent=location_window
+            location.name, x, y, int(width), 20, WHITE, parent=location_window
         )
         close_btn = self.new_close_button(height, location_window, width, x, y)
 
@@ -290,7 +285,7 @@ class LoadingScreen(arcade.View):
         b = t - 30
         arcade.draw_lrtb_rectangle_outline(l, r, t, b, arcade.color.WHITE)
         r = l + (SCREEN_WIDTH - 200) * (self.progress / 99)
-        arcade.draw_lrtb_rectangle_filled(l, r, t - 1, b + 1, arcade.color.GREEN)
+        arcade.draw_lrtb_rectangle_filled(l, r, t - 1, b + 1, GREEN)
         text = f'Loading progress: {int(self.progress)}'
         arcade.draw_text(text, l, t + 20, arcade.color.WHITE, 20)
 

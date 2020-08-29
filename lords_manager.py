@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from functools import lru_cache
-from random import randint
+from random import randint, random
 from typing import Tuple
 from classes import *
 
@@ -61,7 +61,7 @@ class LordsManager:
         """Load list of str names from txt file."""
         with open(file_name, 'r') as file:
             names = file.readline().rstrip('\n').split(',')
-        return names
+        return sorted(names)
 
     def load_full_lords_names_set(self,
                                   file_name: str = 'lords.txt',
@@ -105,7 +105,9 @@ class LordsManager:
                 lord = self.create_random_nobleman(name, title=title)
                 self._lords[lord.id] = lord
 
-    def create_random_nobleman(self, name: str, title: Title = None) -> Nobleman:
+    def create_random_nobleman(self,
+                               name: str,
+                               title: Title = None,) -> Nobleman:
         lord = Nobleman(len(self._lords), name, randint(16, 65), RAGADAN,
                         Faction.choice(),
                         Title.choice() if title is None else title)
@@ -115,11 +117,11 @@ class LordsManager:
     @staticmethod
     def get_generic_portrait_name(lord):
         if lord.title is Title.client:
-            return f'portraits/client_{lord.sex.value}.png'
+            return f'portraits/client {lord.sex.value}.png'
         if lord.age < 25:
-            age_part = 'young_'
+            age_part = 'young '
         else:
-            age_part = '' if lord.age < 50 else 'old_'
+            age_part = '' if lord.age < 50 else 'old '
         return f'portraits/{age_part}noble{lord.sex.value}.png'
 
     def _save_data_to_db(self, convert_data: bool):
@@ -157,15 +159,17 @@ class LordsManager:
 
     @staticmethod
     def prepare_location_to_save(location: Location) -> Location:
+        if location.owner:
+            location.owner = location.owner.id
         return location
 
     def convert_str_data_to_instances(self, instance: Union[Nobleman, Location]):
         if isinstance(instance, Nobleman):
-            self.convert_str_data_to_nobleman(instance)
+            self.convert_int_data_to_nobleman(instance)
         else:
-            self.convert_str_data_to_location(instance)
+            self.convert_int_data_to_location(instance)
 
-    def convert_str_data_to_nobleman(self, lord: Nobleman):
+    def convert_int_data_to_nobleman(self, lord: Nobleman):
         if lord.spouse:
             lord._spouse = self.get_lord_of_id(lord.spouse)
         if lord.liege:
@@ -175,8 +179,9 @@ class LordsManager:
         lord._siblings = {self.get_lord_of_id(s) for s in lord.siblings}
         lord._fiefs = {self.get_location_of_id(f) for f in lord.fiefs}
 
-    def convert_str_data_to_location(self, location: Location):
-        pass
+    def convert_int_data_to_location(self, location: Location):
+        if location.owner:
+            location.owner = self.get_lord_of_id(location.owner)
 
     @staticmethod
     def _load_data_from_db() -> Tuple[Dict[int, Nobleman], Dict[int, Location]]:
@@ -196,7 +201,7 @@ class LordsManager:
         return lords, locations
 
     def random_lord(self) -> Nobleman:
-        return choice([lord for lord in self.lords])
+        return choice(lord for lord in self.lords)
 
     def get_lord_of_id(self, id: Union[id, Nobleman]) -> Nobleman:
         try:
@@ -379,6 +384,29 @@ class LordsManager:
             print('ok', counter)
             return True
 
+    def add_spouses(self):
+        free = set(self.lords)
+        for lord in (n for n in free if n.title is not Title.client):
+            if lord.spouse is None and random() > 0.25:
+                sex = Sex.man if lord.sex is Sex.woman else Sex.woman
+                name = choice(self.names[sex])
+                prefix = lord.prefix
+                surname = lord.family_name
+                full_name = f'{name} {prefix} {surname}'
+                min_age = lord.age - 10 if sex is Sex.woman else lord.age
+                max_age = lord.age if sex is Sex.woman else lord.age + 10
+                age = randint(min_age, max_age)
+                id = len(self.lords)
+                spouse = Nobleman(id, full_name, age,
+                                  title=lord.title)
+                spouse.portrait = self.get_generic_portrait_name(spouse)
+                self.prepare_lord_for_save(spouse)
+                self._lords[id] = spouse
+                self.convert_int_data_to_nobleman(lord)
+                lord.spouse = spouse
+                self.prepare_lord_for_save(lord)
+        self.save()
+
     def assign_free_vassals(self):
         ronins = self.get_lords_without_liege()
         ronins = {r for r in ronins if r.title is not Title.count}
@@ -394,3 +422,4 @@ if __name__ == '__main__':
     manager.create_lords_set(1552)
     manager.build_feudal_hierarchy()
     manager.save(create=True)
+    manager.add_spouses()
