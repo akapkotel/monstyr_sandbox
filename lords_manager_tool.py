@@ -10,11 +10,13 @@ from dbm import error
 from functools import partial
 from typing import Any, Iterable, Tuple, Callable
 from tkinter import (
-    DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, HORIZONTAL, VERTICAL,
-    CENTER, END, IntVar, StringVar, Label, Entry, Spinbox, Listbox, Frame,
-    LabelFrame, ACTIVE, SUNKEN, Button as TkButton
-    )
-from functions import load_image_or_placeholder, plural
+    DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, CENTER, END, IntVar,
+    StringVar, Label, Entry, Spinbox, Listbox, Frame, LabelFrame, ACTIVE,
+    SUNKEN, Button as TkButton
+)
+from functions import (load_image_or_placeholder, plural, input_match_search,
+    get_current_language
+)
 from classes import *
 from lords_manager import LordsManager
 
@@ -94,7 +96,9 @@ class Application(tk.Tk):
         self.lords_filter = None
         self.locations_filter = None
 
-        # handle to retrieve additional TopLevel windows opened by user:
+        # Handles to retrieve additional TopLevel windows opened by user. We
+        # keep two dicts of windows for Noblemen and Location instances,
+        # and each window is identified by it's instance id integer key:
         self.extra_windows = {Nobleman: {}, Location: {}}
         # ---- Sections of the Window ----
         sections_names = ['Lords in numbers:', 'Locations in numbers:',
@@ -220,63 +224,58 @@ class Application(tk.Tk):
         opening detail-view is displayed.
         """
         section = self.sections['Lords and fiefs:']
-        left_frame = Frame(section)
-        center_frame = Frame(section)
-        right_frame = Frame(section)
+        self.lords_searching_list(section)
+        self.details_section(section)
+        self.locations_searching_list(section)
 
+    def lords_searching_list(self, section):
+        left_frame = Frame(section)
         lords_list_label = Label(left_frame,
                                  textvariable=self.lords_list_title)
-
-        search = StringVar()
-        self.lords_search_entry = Entry(left_frame, textvariable=search)
+        variable = StringVar()
+        self.lords_search_entry = Entry(left_frame, textvariable=variable)
         self.lords_list = Listbox(left_frame, height=20, width=30,
                                   selectmode=tk.SINGLE)
         self.lords_list.bind('<Button-1>',
-                             partial(
-                                 self.configure_detail_button,
-                                 'Lord details', self.lords_details
-                                 )
-                             )
+                             partial(self.configure_detail_button,
+                                     'Lord details',
+                                     self.lords_details))
         self.lords_search_entry.bind(
-            '<Key>', partial(
-                self.input_match_search, search,
-                lambda: self.manager.lords, self.lords_list
-                )
-            )
-
-        top_center_frame = Frame(center_frame)
-        self.details_button = TkButton(top_center_frame)
-        self.selected_image = Label(top_center_frame)
-
+            '<Key>', partial(input_match_search, variable,
+                             lambda: self.manager.lords, self.lords_list))
         lords_list_label.pack(side=TOP)
         self.lords_search_entry.pack(side=TOP)
         self.lords_list.pack(side=TOP)
+        left_frame.pack(side=LEFT, expand=True, fill=BOTH)
+
+    def details_section(self, section):
+        center_frame = Frame(section)
+        top_center_frame = Frame(center_frame)
+        self.details_button = TkButton(top_center_frame)
+        self.selected_image = Label(top_center_frame)
         self.details_button.pack(side=TOP)
         self.selected_image.pack(side=TOP)
         top_center_frame.pack(side=TOP)
+        center_frame.pack(side=LEFT, expand=True, fill=BOTH)
 
+    def locations_searching_list(self, section):
+        right_frame = Frame(section)
         locations_list_label = Label(right_frame,
                                      textvariable=self.locations_list_title)
-        search = StringVar()
-        self.locations_search_entry = Entry(right_frame, textvariable=search)
+        variable = StringVar()
+        self.locations_search_entry = Entry(right_frame, textvariable=variable)
         self.locations_list = Listbox(right_frame, height=20, width=30,
                                       selectmode=tk.SINGLE)
+        args = 'Location details', self.location_details
         self.locations_list.bind(
-            '<Button-1>',
-            partial(self.configure_detail_button, 'Location details',
-                    self.location_details)
-            )
+            '<Button-1>', partial(self.configure_detail_button, *args))
         self.locations_search_entry.bind(
-            '<Key>', partial(self.input_match_search, search,
+            '<Key>', partial(input_match_search, variable,
                              lambda: self.manager.locations,
                              self.locations_list))
-
         locations_list_label.pack(side=TOP)
         self.locations_search_entry.pack(side=TOP)
         self.locations_list.pack(side=TOP)
-
-        left_frame.pack(side=LEFT, expand=True, fill=BOTH)
-        center_frame.pack(side=LEFT, expand=True, fill=BOTH)
         right_frame.pack(side=LEFT, expand=True, fill=BOTH)
 
     def update_widgets_values(self):
@@ -385,7 +384,7 @@ class Application(tk.Tk):
         if window := self.window_for_instance_already_opened(instance):
             window.lift()
         else:
-            self.manager.convert_str_data_to_instances(instance)
+            self.manager.convert_ids_to_instances(instance)
             self.details_window(instance)
 
     def window_for_instance_already_opened(self, instance) -> Optional[tk.Toplevel]:
@@ -396,10 +395,10 @@ class Application(tk.Tk):
 
     def new_instance_and_window(self, object_type: Union[type(Nobleman), type(Location)]):
         if object_type == Nobleman:
-            instance = Nobleman(len(self.manager._lords), 'ADD NAME',
-                                nationality=RAGADAN)
+            instance = Nobleman(len(self.manager.lords), 'ADD NAME',
+                                nationality=Nationality.choice())
         else:
-            instance = Location(len(self.manager._locations), 'ADD NAME')
+            instance = Location(len(self.manager.locations), 'ADD NAME')
         self.details_window(instance)
 
     def details_window(self, instance: Union[Nobleman, Location]):
@@ -446,9 +445,8 @@ class Application(tk.Tk):
         self.extra_windows[instance.__class__][instance.id] = window
 
     def unregister_extra_window(self, instance: Union[Nobleman, Location]):
-        window_type = instance.__class__
-        self.extra_windows[window_type][instance.id].destroy()
-        del self.extra_windows[window_type][instance.id]
+        self.extra_windows[instance.__class__][instance.id].destroy()
+        del self.extra_windows[instance.__class__][instance.id]
 
     def close_details_window(self, instance: Union[Nobleman, Location]):
         """
@@ -486,9 +484,9 @@ class Application(tk.Tk):
         return variable, pack_widget(widget, side=LEFT)
 
     @staticmethod
-    def widget_from_string_attribute(attr, container, name):
+    def widget_from_string_attribute(attr: str, container, name):
         variable = StringVar(value=attr)
-        if name in ('portrait', 'image'):
+        if name in ('portrait', 'image', 'picture'):
             photo = load_image_or_placeholder(attr)
             widget = Label(container, image=photo, relief=SUNKEN)
             widget.photo = photo
@@ -546,7 +544,7 @@ class Application(tk.Tk):
 
     def generate_action_widget(self, container, instance, name, variable,
                                widget):
-        if name in ('portrait', 'image'):
+        if name in ('portrait', 'image', 'picture'):
             action = AuthButton(container, text=f'Change {name}',
                                 command=partial(self.change_widget_image,
                                                 widget, variable))
@@ -773,29 +771,8 @@ class Application(tk.Tk):
         finally:
             widget.delete(ACTIVE)
 
-    @staticmethod
-    def input_match_search(query_variable: StringVar,
-                           searched: Callable,
-                           updated: Listbox,
-                           event: tk.Event):
-        """
-        Read value of StringVar widget, add character added in this call, and
-        match the result with provided Iterable retrieved from call to Callable
-        lambda and then update updated Listbox with matching elements.
-        """
-        if (pressed := event.keysym) == 'BackSpace':
-            query = query_variable.get()[:-1]
-        elif pressed == 'space':
-            query = query_variable.get() + ' '
-        else:
-            query = query_variable.get() + pressed
-        updated.delete(0, END)
-        for x in (x.name for x in searched() if query in x.name):
-            updated.insert(END, x)
-
 
 if __name__ == '__main__':
-    with open('config.txt', 'r') as config:
-        language = config.readline().rstrip('\n')
+    language = get_current_language()
     app = Application(language)
     app.mainloop()

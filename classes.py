@@ -21,7 +21,7 @@ class Nobleman:
                  id: int,
                  full_name: str = '',
                  age: int = 25,
-                 nationality: str = '',
+                 nationality: Nationality = Nationality.ragada,
                  faction: Faction = Faction.neutral,
                  title: Title = Title.chevalier,
                  church_title: ChurchTitle = ChurchTitle.no_title,

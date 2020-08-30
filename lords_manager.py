@@ -95,7 +95,8 @@ class LordsManager:
             'Vittorio di Stravicii', 'Amadeus da Orsini',
             'Agostino di Mozzenigo']
 
-        self._lords = {i: Nobleman(i, name, 20, RAGADAN, Faction.choice(), Title.count)
+        self._lords = {i: Nobleman(i, name, 20, Nationality.ragada,
+                                   Faction.choice(), Title.count)
                 for i, name in enumerate(counts, start=0)}
 
         for title, counter in numbers.items():
@@ -107,8 +108,10 @@ class LordsManager:
 
     def create_random_nobleman(self,
                                name: str,
-                               title: Title = None,) -> Nobleman:
-        lord = Nobleman(len(self._lords), name, randint(16, 65), RAGADAN,
+                               nationality: Nationality = None,
+                               title: Title = None) -> Nobleman:
+        lord = Nobleman(len(self._lords), name, randint(16, 65),
+                        Nationality.choice() if nationality is None else nationality,
                         Faction.choice(),
                         Title.choice() if title is None else title)
         lord.portrait = self.get_generic_portrait_name(lord)
@@ -143,6 +146,13 @@ class LordsManager:
 
     def prepare_for_save(self,
                          instance: Union[Nobleman, Location]) -> Union[Nobleman, Location]:
+        """
+        When saving instances of Nobleman and location replace their
+        references to other instances with these instances id's. It helps
+        keeping our shelve file small, loading time short, and references
+        correct, since id's are not changing, when instances attributes are
+        modified.
+        """
         if isinstance(instance, Nobleman):
             return self.prepare_lord_for_save(instance)
         return self.prepare_location_to_save(instance)
@@ -163,13 +173,16 @@ class LordsManager:
             location.owner = location.owner.id
         return location
 
-    def convert_str_data_to_instances(self, instance: Union[Nobleman, Location]):
+    def convert_ids_to_instances(self, instance: Union[Nobleman, Location]):
+        # Since we saved our instances with id's instead of the other objects
+        # references, we need to get our references back, when loading our
+        # instance:
         if isinstance(instance, Nobleman):
-            self.convert_int_data_to_nobleman(instance)
+            self.convert_ids_to_noblemen(instance)
         else:
-            self.convert_int_data_to_location(instance)
+            self.convert_ids_to_locations(instance)
 
-    def convert_int_data_to_nobleman(self, lord: Nobleman):
+    def convert_ids_to_noblemen(self, lord: Nobleman):
         if lord.spouse:
             lord._spouse = self.get_lord_of_id(lord.spouse)
         if lord.liege:
@@ -179,7 +192,7 @@ class LordsManager:
         lord._siblings = {self.get_lord_of_id(s) for s in lord.siblings}
         lord._fiefs = {self.get_location_of_id(f) for f in lord.fiefs}
 
-    def convert_int_data_to_location(self, location: Location):
+    def convert_ids_to_locations(self, location: Location):
         if location.owner:
             location.owner = self.get_lord_of_id(location.owner)
 
@@ -203,7 +216,7 @@ class LordsManager:
     def random_lord(self) -> Nobleman:
         return choice(lord for lord in self.lords)
 
-    def get_lord_of_id(self, id: Union[id, Nobleman]) -> Nobleman:
+    def get_lord_of_id(self, id: Union[int, Nobleman]) -> Nobleman:
         try:
             return self._lords[id]
         except KeyError:
@@ -261,8 +274,11 @@ class LordsManager:
     def get_locations_by_owner(self, owner: Nobleman) -> Set[Location]:
         return set(loc for loc in self.locations if loc.owner is owner)
 
-    def get_location_of_id(self, id: int) -> Location:
-        return self._locations[id]
+    def get_location_of_id(self, id: Union[int, Location]) -> Location:
+        try:
+            return self._locations[id]
+        except KeyError:
+            return self._locations[id.id]
 
     @lru_cache(maxsize=1024)
     def get_location_by_name(self, name: str) -> Location:
@@ -402,7 +418,7 @@ class LordsManager:
                 spouse.portrait = self.get_generic_portrait_name(spouse)
                 self.prepare_lord_for_save(spouse)
                 self._lords[id] = spouse
-                self.convert_int_data_to_nobleman(lord)
+                self.convert_ids_to_noblemen(lord)
                 lord.spouse = spouse
                 self.prepare_lord_for_save(lord)
         self.save()

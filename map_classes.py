@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Set, Optional, Callable, Union, Tuple, List
 from arcade import (
-    Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor, draw_text
+    Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor, draw_text,
+    Texture
 )
-from arcade.color import WHITE, BLACK
+from arcade.color import WHITE, BLACK, DUTCH_WHITE
 
 from classes import Location
 
@@ -139,7 +140,39 @@ class SpriteSolidColor(ArcadeSpriteSolidColor):
         self.position = x, y
 
 
-class UiPanel(Visible, CursorInteractive, SpriteSolidColor):
+class UiPanelFactory:
+    """
+    Return one of two types of UiPanel objects depending on the 'texture'
+    param presence. Just call the UiPanelFactory.new() method with params You
+    would normally pass to the __init__ of your target UiPanel class.
+    """
+
+    @staticmethod
+    def new(x: int,
+            y: int,
+            width: int,
+            height: int,
+            color: Color = DUTCH_WHITE,
+            texture: str = None,
+            visible: bool = True,
+            active: bool = True,
+            parent: Hierarchical = None):
+        if texture is None:
+            return SimpleUiPanel(x, y, width, height, color, visible, active, parent)
+        return TexturedUiPanel(x, y, width, height, texture, visible, active, parent)
+
+
+class UiPanel(Visible, CursorInteractive):
+
+    def __init__(self,
+                 visible: bool = True,
+                 active: bool = True,
+                 parent: Hierarchical = None):
+        Visible.__init__(self, visible)
+        CursorInteractive.__init__(self, active, parent=parent)
+
+
+class SimpleUiPanel(UiPanel, SpriteSolidColor):
 
     def __init__(self,
                  x: int,
@@ -150,9 +183,23 @@ class UiPanel(Visible, CursorInteractive, SpriteSolidColor):
                  visible: bool = True,
                  active: bool = True,
                  parent: Hierarchical = None):
-        Visible.__init__(self, visible)
-        CursorInteractive.__init__(self, active, parent=parent)
+        UiPanel.__init__(self, visible, active, parent)
         SpriteSolidColor.__init__(self, x, y, width, height, color)
+
+
+class TexturedUiPanel(UiPanel, Sprite):
+
+    def __init__(self,
+                 x: int,
+                 y: int,
+                 width: int,
+                 height: int,
+                 texture: str,
+                 visible: bool = True,
+                 active: bool = True,
+                 parent: Hierarchical = None):
+        UiPanel.__init__(self, visible, active, parent)
+        Sprite.__init__(self, texture, x, y, width, height)
 
 
 class UiText(Visible, CursorInteractive, SpriteSolidColor):
@@ -172,10 +219,11 @@ class UiText(Visible, CursorInteractive, SpriteSolidColor):
         CursorInteractive.__init__(self, active, parent=parent)
         SpriteSolidColor.__init__(self, x, y, width, height, background_color)
         self.text = text
+        self.text_color = text_color
 
     def draw(self):
         super().draw()
-        draw_text(self.text, self.center_x, self.center_y, WHITE, self.height)
+        draw_text(self.text, self.center_x, self.center_y, self.text_color, self.height)
 
 
 class Button(Visible, CursorInteractive, Sprite):

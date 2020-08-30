@@ -30,10 +30,12 @@ class Application(arcade.Window):
     properties.
     """
 
-    def __init__(self, width, height, title):
+    def __init__(self, width: int, height: int, title: str, language: str):
         super().__init__(width, height, title)
+        self.language = language
         self.views = {
-            LOADING_VIEW: LoadingScreen(), MENU_VIEW: Menu(),
+            LOADING_VIEW: LoadingScreen(),
+            MENU_VIEW: Menu(),
             SANDBOX_VIEW: Sandbox()
         }
 
@@ -148,8 +150,12 @@ class Sandbox(arcade.View):
 
         # to draw and update everything with one instruction in on_draw()
         # and on_update() methods:
-        self.drawn = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
-        self.updated = [attr for attr in self.__dict__.values() if hasattr(attr, 'draw')]
+        self.drawn = self.get_attributes_of_name('draw')
+        self.updated = self.get_attributes_of_name('update')
+
+    @remove_arcade_window_from_returned_value
+    def get_attributes_of_name(self, name: str) -> List:
+        return [attr for attr in self.__dict__.values() if hasattr(attr, name)]
 
     def create_locations_spritelist(self) -> SpriteList:
         locations = SpriteList(is_static=True)
@@ -167,6 +173,8 @@ class Sandbox(arcade.View):
             x, y = location.position
             label = MapTextLabel(location.name, x + 40, y - 10, 100, 20,
                                  active=False)
+            # TODO: bind somehow label with correct MapIcon object to allow
+            #  e.g. changing label color when icon is mouse-pointed
             map_labels.append(label)
         return map_labels
 
@@ -176,7 +184,7 @@ class Sandbox(arcade.View):
         width = SCREEN_WIDTH // 5
         x = SCREEN_WIDTH - (width // 2)
         y = SCREEN_HEIGHT // 2
-        right_panel = UiPanel(x, y, width, SCREEN_HEIGHT, BLACK)
+        right_panel = UiPanelFactory.new(x, y, width, SCREEN_HEIGHT, BLACK)
 
         function = partial(self.window.switch_view, MENU_VIEW)
         exit_button = Button('quit', x, 75, function, parent=right_panel)
@@ -200,23 +208,25 @@ class Sandbox(arcade.View):
             obj.draw()
 
     def open_location_window(self, location: Location):
-        print(f'Location name: {location.name}')
+        x, y = int(SCREEN_WIDTH // 2), int(SCREEN_HEIGHT // 2)
+        width = int((SCREEN_WIDTH - 300) * 0.7)
+        height = int(SCREEN_HEIGHT * 0.7)
 
-        x, y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
-        width, height = (SCREEN_WIDTH - 300) * 0.7, SCREEN_HEIGHT * 0.7
+        window = UiPanelFactory.new(x, y, width, height, DUTCH_WHITE)
 
-        location_window = UiPanel(x, y, int(width), int(height), BLACK, False)
+        # window contents:
+        y = y - 50 + height // 2
         location_name = UiText(
-            location.name, x, y, int(width), 20, WHITE, parent=location_window
-        )
-        close_btn = self.new_close_button(height, location_window, width, x, y)
+            location.name, x, y, width, 20, BLACK, parent=window)
+        close_btn = self.new_close_button(window, width, x, y)
 
-        self.ui_elements.extend([location_window, location_name, close_btn])
+        # start updating and drawing window on the screen:
+        self.ui_elements.extend([window, location_name, close_btn])
 
-    def new_close_button(self, height, location_window, width, x, y) -> Button:
-        x, y = x - 30 + (width // 2), y - 30 + (height // 2)
+    def new_close_button(self, location_window, width, x, y) -> Button:
+        x = x - 30 + (width // 2)
         function = partial(self.close_window, location_window)
-        return Button('close', x, y, function, parent=location_window)
+        return Button('close', x, y + 20, function, parent=location_window)
 
     def close_window(self, window: UiPanel):
         for child in window.children:
@@ -243,8 +253,7 @@ class Menu(arcade.View):
                 Button(names[i], width, 300 * (i + 1), functions[i])
             )
 
-        self.drawn = [self.buttons]
-        self.updated = [self.buttons]
+        self.drawn = self.updated = [self.buttons]
 
     def on_show_view(self):
         self.window.set_mouse_visible(True)
@@ -291,7 +300,8 @@ class LoadingScreen(arcade.View):
 
 
 if __name__ == "__main__":
-    application = Application(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    language = get_current_language()
+    application = Application(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE, language)
     application.center_window()
     application.switch_view(MENU_VIEW, loading=True)
     arcade.run()

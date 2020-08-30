@@ -35,6 +35,26 @@ class Sex(MyEnum):
         return Sex.man if random_float() < 0.75 else Sex.woman
 
 
+class Nationality(MyEnum):
+    ragada = 'Ragada'
+    agaria = 'Agaria'
+    cynazja = 'Cynazja'
+    kord = 'Kord'
+    kara = 'Kara'
+    vermer = 'Vermer'
+    nordia = 'Nordia'
+    doria = 'Doria'
+    matra = 'Matra'
+    gord = 'Gord'
+    spazja = 'Spazja'
+    kartina = 'Kartina'
+    eliar = 'Eliar'
+    balingen = 'Balingen'
+    valdeller = 'Valdeller'
+    liga = 'Liga'
+    devon = 'Devon'
+
+
 class Title(MyEnum):
     client = 'client'
     chevalier = 'chevalier'

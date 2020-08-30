@@ -2,8 +2,11 @@
 
 import os
 
-from typing import Tuple
+from typing import Union, Tuple, List, Callable, Sized
 from functools import wraps
+from tkinter import StringVar, Listbox, Event, END
+from arcade import Window
+from arcade.key import BACKSPACE, SPACE
 
 ENGLISH = 'english'
 POLISH = 'polish'
@@ -19,7 +22,12 @@ for lang_file in os.listdir(LANG_DIR):
 
 
 def localize(text: str, language: str) -> str:
-    return LANGUAGES[language][text]
+    # text is localized by choosing a proper language-dict from dict of all
+    # languages available, and then getting a value of a text-key from the
+    # dict obtained:
+    if language != ENGLISH:
+        return LANGUAGES[language][text]
+    return text
 
 
 def plural(word: str, language: str = POLISH) -> str:
@@ -31,9 +39,7 @@ def plural(word: str, language: str = POLISH) -> str:
         word = word + 'es'
     else:
         word = word + 's'
-    if language != ENGLISH:
-        return localize(word, language)
-    return word
+    return localize(word, language)
 
 
 def get_screen_size() -> Tuple[int, int]:
@@ -45,7 +51,6 @@ def get_screen_size() -> Tuple[int, int]:
 def load_image_or_placeholder(filename: str):
     import os
     from tkinter import PhotoImage
-    # filename.replace('_', ' ')
     if os.path.exists(filename):
         return PhotoImage(file=filename)
     return PhotoImage(file='no_image.png')
@@ -58,3 +63,67 @@ def print_return(func):
         print(returned)
         return returned
     return wrapper
+
+
+def input_match_search(query_variable: Union[StringVar, str],
+                       searched: Callable,
+                       updated: Union[Listbox, List],
+                       event: Union[Event, int]):
+    """
+    Handle dynamic search called when user writes his query in tkinter
+    lords manager or in arcade map application. There are two cases
+    with different types of parameters passed to this function. Both of them
+    are handled in two steps: (1) updating value of virtual variable which
+    stores current query with the last user-pressed key, and then (2)
+    updating the list of elements of searched collection to match the query.
+    """
+    if isinstance(query_variable, StringVar):
+        query = update_tk_stringvar(event, query_variable)
+    else:
+        query = update_string(event, query_variable)
+    update_target_with_variable(query, searched, updated)
+
+
+def update_tk_stringvar(event: Event, query_variable: StringVar) -> str:
+    if (pressed := event.keysym) == 'BackSpace':
+        query = query_variable.get()[:-1]
+    elif pressed == 'space':
+        query = query_variable.get() + ' '
+    else:
+        query = query_variable.get() + pressed
+    return query
+
+
+def update_string(event: int, query_variable: str) -> str:
+    if (pressed := event) == BACKSPACE:
+        query = query_variable[:-1]
+    elif pressed == SPACE:
+        query = query_variable + ' '
+    else:
+        query = query_variable + chr(pressed)
+    return query
+
+
+def update_target_with_variable(query: str,
+                                searched: Callable,
+                                updated: Union[Listbox, List]):
+    if isinstance(updated, Listbox):
+        updated.delete(0, END)
+        for x in (x.name for x in searched() if query in x.name):
+            updated.insert(END, x)
+    else:  # updated is a normal python list object
+        updated = [x.name for x in searched() if query in x.name]
+
+
+def remove_arcade_window_from_returned_value(func: Callable):
+    @wraps(func)
+    def remover(*args, **kwargs):
+        result = func(*args, **kwargs)
+        return [e for e in result if not isinstance(e, Window)]
+    return remover
+
+
+def get_current_language():
+    with open('config.txt', 'r') as config:
+        language = config.readline().rstrip('\n')
+    return language
