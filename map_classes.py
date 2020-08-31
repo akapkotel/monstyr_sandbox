@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Set, Optional, Callable, Union, Tuple, List
 from arcade import (
-    Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor, draw_text,
-    Texture
+    Window, Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor,
+    Texture, draw_text, draw_circle_outline, draw_ellipse_outline
 )
-from arcade.color import WHITE, BLACK, DUTCH_WHITE
+from arcade.color import WHITE, BLACK, GREEN, DUTCH_WHITE
 
 from classes import Location
 
@@ -244,7 +244,7 @@ class Button(Visible, CursorInteractive, Sprite):
         CursorInteractive.__init__(self, can_be_dragged=True,
                                    function_on_left_click=function,
                                    parent=parent)
-        texture = f'ui/{text.lower()} button.png'
+        texture = f'ui/{text.lower()}_button.png'
         Sprite.__init__(self, texture, center_x=x, center_y=y)
         self.text = text
 
@@ -263,8 +263,9 @@ class MapIcon(Visible, CursorInteractive, Sprite):
                  can_be_dragged: bool = False,
                  function_on_left_click: Optional[Callable] = None,
                  function_on_right_click: Optional[Callable] = None):
-        """..."""
         self.location: Location = location
+        self.map_label: Optional[MapTextLabel] = None
+        self.map_indicator: Optional[MapIndicator] = None
         self.x, self.y = location.position
         Sprite.__init__(self, f'map_icons/{map_texture}', center_x=self.x,
                         center_y=self.y)
@@ -281,8 +282,41 @@ class MapIcon(Visible, CursorInteractive, Sprite):
             self.function_on_left_click(self.location)
         self.dragged = self.can_be_dragged
 
+    def _func_on_mouse_enter(self):
+        self.map_label.text_color = GREEN
+        self.create_map_indicator()
+
+    def create_map_indicator(self):
+        spritelist = self.map_label.sprite_lists[0]
+        indicator = MapIndicator(*self.position, 60, 60, 60, ALPHA)
+        self.map_indicator = indicator
+        spritelist.append(indicator)
+
+    def _func_on_mouse_exit(self):
+        self.map_label.text_color = WHITE
+        self.kill_map_indicator()
+
+    def kill_map_indicator(self):
+        spritelist = self.map_label.sprite_lists[0]
+        spritelist.remove(self.map_indicator)
+        self.map_indicator = None
+
+
+class MapIndicator(SpriteSolidColor):
+    """Draw circular indicator around mouse-pointed MapIcon on the map."""
+
+    def __init__(self, x: int, y: int, radius: int, width: int, height: int, color: Color):
+        super().__init__(x, y, width, height, color)
+        self.radius = radius
+
+    def draw(self):
+        super().draw()
+        x, y = self.position
+        draw_ellipse_outline(x, y, 120, 95, GREEN)
+
 
 class MapTextLabel(UiText):
+    """Text label displayed near the MapIcon on the map."""
 
     def __init__(self,
                  text: str,
@@ -291,11 +325,18 @@ class MapTextLabel(UiText):
                  width: int,
                  height: int,
                  text_color: Color = WHITE,
+                 map_icon: Optional[MapIcon] = None,
                  visible: bool = True,
                  active: bool = True,
                  parent: Hierarchical = None):
         UiText.__init__(self, text, x, y, width, height, text_color,
                         visible=visible, active=active, parent=parent)
+        self.map_icon: Optional[MapIcon] = map_icon
+        if map_icon is not None:
+            self.bind_to_map_icon()
+
+    def bind_to_map_icon(self):
+        self.map_icon.map_label = self
 
 
 class UiSpriteList(SpriteList):

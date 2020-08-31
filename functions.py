@@ -35,8 +35,10 @@ def plural(word: str, language: str = POLISH) -> str:
         word += 's'
     elif word.endswith('y'):
         word = word.rstrip('y') + 'ies'
-    elif word.endswith(('ch', 's')):
+    elif word.endswith(('ch')):
         word = word + 'es'
+    elif word.endswith('s'):
+        pass
     else:
         word = word + 's'
     return localize(word, language)
@@ -123,7 +125,21 @@ def remove_arcade_window_from_returned_value(func: Callable):
     return remover
 
 
+def mark_spouses(func: Callable):
+    from classes import Nobleman
+
+    @wraps(func)
+    def marker(*args, **kwargs):
+        if isinstance(args[2], Nobleman):
+            result = func(*args, **kwargs)
+    return marker
+
+
 def get_current_language():
     with open('config.txt', 'r') as config:
         language = config.readline().rstrip('\n')
     return language
+
+
+def no_spaces(text: str) -> str:
+    return text.replace(' ', '_')

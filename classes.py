@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
+import os
+
 from random import randint
 from typing import List, Set, Dict, Union, Optional
 from enums import *
@@ -202,7 +204,7 @@ class Location:
         self.id: id = id
         self.picture = picture
         self.name = name or location_type.value
-        self.map_icon = f'{self.name}_{randint(1, 4)}.png'
+        self.map_icon = self.get_proper_map_icon(self)
         self.position = position
         self.type = location_type
         self.owner = owner
@@ -217,6 +219,13 @@ class Location:
     @property
     def full_name(self):
         return self.__repr__()
+
+    @staticmethod
+    def get_proper_map_icon(location: Location):
+        preferred_map_icon_name = f'map_icons/{location.name}.png'
+        if os.path.exists(preferred_map_icon_name):
+            return preferred_map_icon_name
+        return f'{location.type.value}_{randint(1, 4)}.png'
 
 
 class Counter:

@@ -2,7 +2,7 @@
 
 import arcade
 
-from random import randint, uniform
+from random import uniform
 from arcade.color import GREEN, DARK_MOSS_GREEN
 from functools import partial
 
@@ -38,9 +38,8 @@ class Application(arcade.Window):
             MENU_VIEW: Menu(),
             SANDBOX_VIEW: Sandbox()
         }
-
         # --- cursor-related ---
-        self.cursor = (0, 0, 0, 0)
+        self.cursor_position = (0, 0, 0, 0)
         self.cursor_pointed: Optional[CursorInteractive] = None
         self.cursor_dragged: Optional[CursorInteractive] = None
 
@@ -72,7 +71,7 @@ class Application(arcade.Window):
             self.update_cursor()
 
     def update_cursor(self):
-        x, y, *_ = self.cursor
+        x, y, *_ = self.cursor_position
         pointed = self.get_pointed_sprite(x, y)
         self.update_mouse_pointed(pointed)
 
@@ -110,14 +109,14 @@ class Application(arcade.Window):
         return None
 
     def on_mouse_motion(self, x: float, y: float, dx: float, dy: float):
-        self.cursor = x, y, dx, dy
+        self.cursor_position = x, y, dx, dy
 
     def on_mouse_press(self, x: float, y: float, button: int, modifiers: int):
-        pointed = self.cursor_pointed
-        if pointed is not None:
-            pointed.on_mouse_press(button)
-            if pointed.can_be_dragged:
-                self.cursor_dragged = pointed
+        if (pointed := self.cursor_pointed) is not None:
+            if button == arcade.MOUSE_BUTTON_LEFT:
+                pointed.on_mouse_press(button)
+                if pointed.can_be_dragged:
+                    self.cursor_dragged = pointed
 
     def on_mouse_release(self, x: float, y: float, button: int, modifiers: int):
         if self.cursor_dragged is not None:
@@ -134,6 +133,13 @@ class Application(arcade.Window):
 
 class Sandbox(arcade.View):
     """Main view displaying actual map."""
+    instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if Sandbox.instance is None:
+            return super().__new__(cls)
+        else:
+            return Sandbox.instance
 
     def __init__(self):
         super().__init__()
@@ -141,10 +147,14 @@ class Sandbox(arcade.View):
         self.manager = LordsManager()
         self.manager.load()
 
+        self.map_icons_to_labels: Dict[int, MapIcon] = {}
+
+        # --- arcade SpriteLists ---
         self.terrain = SpriteList(is_static=True)
-        self.locations: SpriteList = self.create_locations_spritelist()
-        self.map_labels = UiSpritesList = self.create_map_labels()
-        self.ui_elements: UiSpritesList = self.create_ui_elements()
+        self.map_icons: SpriteList = self.create_map_icons_spritelist()
+        self.map_labels: UiSpriteList = self.create_map_labels_spritelist()
+        del self.map_icons_to_labels
+        self.ui_elements: UiSpriteList = self.create_ui_elements_spritelist()
 
         self.testing_ideas()  # TODO: discard this before release
 
@@ -152,33 +162,34 @@ class Sandbox(arcade.View):
         # and on_update() methods:
         self.drawn = self.get_attributes_of_name('draw')
         self.updated = self.get_attributes_of_name('update')
+        Sandbox.instance = self
 
     @remove_arcade_window_from_returned_value
     def get_attributes_of_name(self, name: str) -> List:
         return [attr for attr in self.__dict__.values() if hasattr(attr, name)]
 
-    def create_locations_spritelist(self) -> SpriteList:
+    def create_map_icons_spritelist(self) -> SpriteList:
         locations = SpriteList(is_static=True)
-
         for location in self.manager.locations:
             map_icon = MapIcon(location, location.map_icon,
                                function_on_left_click=
                                self.open_location_window)
+            # used later to bind text map label to map icon:
+            self.map_icons_to_labels[location.id] = map_icon
             locations.append(map_icon)
         return locations
 
-    def create_map_labels(self) -> UiSpriteList:
+    def create_map_labels_spritelist(self) -> UiSpriteList:
         map_labels = UiSpriteList(is_static=True)
         for location in self.manager.locations:
             x, y = location.position
+            map_icon = self.map_icons_to_labels[location.id]
             label = MapTextLabel(location.name, x + 40, y - 10, 100, 20,
-                                 active=False)
-            # TODO: bind somehow label with correct MapIcon object to allow
-            #  e.g. changing label color when icon is mouse-pointed
+                                 map_icon=map_icon, active=False)
             map_labels.append(label)
         return map_labels
 
-    def create_ui_elements(self) -> UiSpriteList:
+    def create_ui_elements_spritelist(self) -> UiSpriteList:
         ui = UiSpriteList(is_static=False)
 
         width = SCREEN_WIDTH // 5
@@ -250,7 +261,7 @@ class Menu(arcade.View):
         width = SCREEN_WIDTH//2
         for i, name in enumerate(names):
             self.buttons.append(
-                Button(names[i], width, 300 * (i + 1), functions[i])
+                Button(no_spaces(names[i]), width, 300 * (i + 1), functions[i])
             )
 
         self.drawn = self.updated = [self.buttons]

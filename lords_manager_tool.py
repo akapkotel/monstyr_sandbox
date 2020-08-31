@@ -8,14 +8,14 @@ import tkinter.filedialog as fd
 
 from dbm import error
 from functools import partial
-from typing import Any, Iterable, Tuple, Callable
+from typing import Any, Iterable, Tuple, Callable, Generator
 from tkinter import (
     DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, CENTER, END, IntVar,
     StringVar, Label, Entry, Spinbox, Listbox, Frame, LabelFrame, ACTIVE,
     SUNKEN, Button as TkButton
 )
-from functions import (load_image_or_placeholder, plural, input_match_search,
-    get_current_language
+from functions import (load_image_or_placeholder, plural, localize,
+    input_match_search, get_current_language
 )
 from classes import *
 from lords_manager import LordsManager
@@ -46,7 +46,7 @@ class User:
         with shelve.open('user.auth', 'c') as file:
             file['user'] = ''.join(
                 [choice(string.ascii_lowercase + string.digits)
-                    for i in range(32)])
+                 for i in range(32)])
 
 
 class AuthButton(tk.Button):
@@ -84,13 +84,13 @@ class Application(tk.Tk):
         self.clergy = IntVar()
         self.lords_by_titles: Dict[Title, IntVar] = {
             t: IntVar() for i, t in enumerate(Title)
-            }
+        }
         self.lords_list_title = StringVar(value='Lords:')
         # --- Locations ---
         self.locations_count = IntVar()
         self.locations_by_type: Dict[LocationType, IntVar] = {
             loc: IntVar() for i, loc in enumerate(LocationType)
-            }
+        }
         self.locations_list_title = StringVar()
         # these filters are used to filter lords and locations in listboxes:
         self.lords_filter = None
@@ -131,7 +131,7 @@ class Application(tk.Tk):
             section, textvariable=self.lords_count, width=4,
             disabledbackground='white',
             disabledforeground='black', state=DISABLED, justify=CENTER
-            ).grid(column=column.next(), row=row())
+        ).grid(column=column.next(), row=row())
         for title, value in self.lords_by_titles.items():
             text = plural(title.value, self.language)
             label = Label(section, text=f'{text.title()}:')
@@ -187,7 +187,7 @@ class Application(tk.Tk):
             section, textvariable=self.locations_count, width=4,
             disabledbackground='white',
             disabledforeground='black', state=DISABLED, justify=CENTER
-            ).grid(column=column.next(), row=row())
+        ).grid(column=column.next(), row=row())
         for location, value in self.locations_by_type.items():
             if column() == 18:
                 column.restart()
@@ -206,14 +206,16 @@ class Application(tk.Tk):
         """Display numbers of Locations of different types."""
         section = self.sections['Actions:']
 
-        AuthButton(section, command=partial(self.new_instance_and_window, Nobleman),
+        AuthButton(section,
+                   command=partial(self.new_instance_and_window, Nobleman),
                    text='Add new lord',
                    state=self.sdb_file_exists()).pack(side=LEFT)
 
         TkButton(section, command=self.load_data, text='Reload data',
                  state=self.sdb_file_exists()).pack(side=LEFT, padx=380)
 
-        AuthButton(section, command=partial(self.new_instance_and_window, Location),
+        AuthButton(section,
+                   command=partial(self.new_instance_and_window, Location),
                    text='Add new location',
                    state=self.sdb_file_exists()).pack(side=RIGHT)
 
@@ -234,7 +236,7 @@ class Application(tk.Tk):
                                  textvariable=self.lords_list_title)
         variable = StringVar()
         self.lords_search_entry = Entry(left_frame, textvariable=variable)
-        self.lords_list = Listbox(left_frame, height=20, width=30,
+        self.lords_list = Listbox(left_frame, height=20, width=35,
                                   selectmode=tk.SINGLE)
         self.lords_list.bind('<Button-1>',
                              partial(self.configure_detail_button,
@@ -264,7 +266,7 @@ class Application(tk.Tk):
                                      textvariable=self.locations_list_title)
         variable = StringVar()
         self.locations_search_entry = Entry(right_frame, textvariable=variable)
-        self.locations_list = Listbox(right_frame, height=20, width=30,
+        self.locations_list = Listbox(right_frame, height=20, width=35,
                                       selectmode=tk.SINGLE)
         args = 'Location details', self.location_details
         self.locations_list.bind(
@@ -305,7 +307,10 @@ class Application(tk.Tk):
         self.update_locations_list()
 
     def change_lords_filter(self, criteria: MyEnum, event: tk.Event):
-        text = 'All lords' if criteria is None else f'{plural(criteria.value)}:'
+        if criteria is None:
+            text = localize('All lords', self.language)
+        else:
+            text = f'{plural(criteria.value, self.language)}:'
         self.lords_list_title.set(value=text)
         self.lords_filter = criteria
         self.update_lords_list()
@@ -360,7 +365,8 @@ class Application(tk.Tk):
         active Listbox in main window. Button could open Nobleman-editing window
         or Location-editing window.
         """
-        self.details_button.configure(text=text, command=partial(function, event))
+        self.details_button.configure(text=text,
+                                      command=partial(function, event))
 
     def lords_details(self, event: tk.Event):
         name = self.get_instance_name(event)
@@ -387,13 +393,15 @@ class Application(tk.Tk):
             self.manager.convert_ids_to_instances(instance)
             self.details_window(instance)
 
-    def window_for_instance_already_opened(self, instance) -> Optional[tk.Toplevel]:
+    def window_for_instance_already_opened(self, instance) -> Optional[
+        tk.Toplevel]:
         try:
             return self.extra_windows[type(instance)][instance.id]
         except KeyError:
             return
 
-    def new_instance_and_window(self, object_type: Union[type(Nobleman), type(Location)]):
+    def new_instance_and_window(self, object_type: Union[
+        type(Nobleman), type(Location)]):
         if object_type == Nobleman:
             instance = Nobleman(len(self.manager.lords), 'ADD NAME',
                                 nationality=Nationality.choice())
@@ -407,7 +415,7 @@ class Application(tk.Tk):
         or single Location, which allows to edit the data and save it.
         """
         window = tk.Toplevel()
-        window.geometry('550x900')
+        window.geometry('625x900')
         window.title(instance.name)
         window.protocol("WM_DELETE_WINDOW",
                         partial(self.close_details_window, instance))
@@ -491,7 +499,7 @@ class Application(tk.Tk):
             widget = Label(container, image=photo, relief=SUNKEN)
             widget.photo = photo
         else:
-            widget = Entry(container, textvariable=variable)
+            widget = Entry(container, textvariable=variable, width=35)
         return variable, widget
 
     @staticmethod
@@ -507,13 +515,13 @@ class Application(tk.Tk):
     def widget_from_int_tuple(attr, container):
         variable = x, y = IntVar(value=attr[0]), IntVar(value=attr[1])
         widget = [
-            Entry(container, textvariable=x, width=4, justify=CENTER),
-            Entry(container, textvariable=y, width=4, justify=CENTER)]
+            Entry(container, textvariable=x, width=5, justify=CENTER),
+            Entry(container, textvariable=y, width=5, justify=CENTER)]
         return variable, widget
 
     def widget_from_set_attribute(self, attr, container, name: str):
         variable = [e.name for e in attr]
-        widget = Listbox(container, height=3, selectmode=tk.SINGLE)
+        widget = Listbox(container, height=3, width=35,selectmode=tk.SINGLE)
         func = self.lords_details if name in LORDS_SETS else self.location_details
         widget.bind('<Double-Button-1>', func)
         for item in attr:
@@ -524,7 +532,8 @@ class Application(tk.Tk):
     def widget_from_enum_attribute(attr, container):
         variable = StringVar(value=attr)
         widget = Spinbox(container,
-                         values=[e.value for i, e in enumerate(attr.__class__)],
+                         values=[e.value for i, e in
+                                 enumerate(attr.__class__)],
                          textvariable=variable)
         widget.delete(0, END)
         widget.insert(0, attr.value)
@@ -538,37 +547,40 @@ class Application(tk.Tk):
 
     def widget_from_instance_or_none(self, attr, container):
         variable = StringVar(value='' if attr is None else attr.name)
-        widget = Entry(container, textvariable=variable)
+        widget = Entry(container, textvariable=variable, width=35)
         widget.bind('<Double-Button-1>', self.lords_details)
         return variable, widget
 
     def generate_action_widget(self, container, instance, name, variable,
                                widget):
+        """
+        Create proper interactive widget: Button or other object which user
+        can interact with to manipulate data of the data widget provided.
+        """
         if name in ('portrait', 'image', 'picture'):
-            action = AuthButton(container, text=f'Change {name}',
-                                command=partial(self.change_widget_image,
-                                                widget, variable))
+            action = self.image_action_widget(container, name, variable, widget)
         elif name == 'full_name':
-            action = AuthButton(container, text='Random name',
-                                command=partial(self.generate_random_name,
-                                                variable, instance.sex)
-                                )
+            action = self.new_name_action_widget(container, instance, variable)
         elif name in ('_spouse', 'liege'):
-            action = self.spouse_or_liege_action(container, instance, name,
-                                                 variable)
+            action = self.pick_lord_action(container, instance, name, variable)
         elif isinstance(widget, Listbox):
-            add = AuthButton(container, text=f'Add {name.lstrip("_")}',
-                             command=partial(self.lords_listbox_window,
-                                             instance, name, variable, widget))
-            delete = AuthButton(container, text='Delete',
-                                command=partial(self.clear_list_variable,
-                                                variable, widget))
-            action = (add, delete)
+            action = self.listbox_action_widget(container, instance, name,
+                                                variable, widget)
         else:
             return None
         return pack_widget(action, side=LEFT, fill='x', expand=True)
 
-    def spouse_or_liege_action(self, container, instance, name, variable):
+    def new_name_action_widget(self, container, instance, variable):
+        return AuthButton(
+            container, text='Random name', command=partial(
+                self.generate_random_name, variable, instance.sex))
+
+    def image_action_widget(self, container, name, variable, widget):
+        return AuthButton(
+            container, text=f'Change {name}', command=partial(
+                self.change_widget_image, widget, variable))
+
+    def pick_lord_action(self, container, instance, name, variable):
         if name == '_spouse':
             change_text, delete_text = 'New marriage', 'Divorce'
         else:
@@ -579,7 +591,17 @@ class Application(tk.Tk):
                                        name, variable)),
             AuthButton(container, text=delete_text,
                        command=lambda: variable.set(value=''))
-            )
+        )
+
+    def listbox_action_widget(self, container, instance, name, variable,
+                              widget):
+        add = AuthButton(container, text=f'Add {name.lstrip("_")}',
+                         command=partial(self.lords_listbox_window,
+                                         instance, name, variable, widget))
+        delete = AuthButton(container, text='Delete',
+                            command=partial(self.clear_list_variable,
+                                            variable, widget))
+        return (add, delete)
 
     def generate_random_name(self, variable: StringVar, sex: Sex):
         variable.set(self.manager.random_lord_name(sex))
@@ -601,7 +623,8 @@ class Application(tk.Tk):
 
     def get_listbox_selected_value(self,
                                    event: tk.Event,
-                                   listbox: Listbox) -> Union[Nobleman, Location]:
+                                   listbox: Listbox) -> Union[
+        Nobleman, Location]:
         listbox_selected = listbox.get(f"@{event.x},{event.y}")
         try:
             instance = self.manager.get_lord_by_name(listbox_selected)
@@ -647,7 +670,9 @@ class Application(tk.Tk):
         for widget in window.winfo_children():
             widget.destroy()
 
-    def save_single_attribute(self, instance, tuple_):
+    def save_single_attribute(self,
+                              instance: Union[Nobleman, Location],
+                              tuple_: Tuple):
         name, attribute, widget, variable = tuple_
         if name in ('portrait', 'image'):
             value = variable.get()
@@ -665,6 +690,9 @@ class Application(tk.Tk):
             return int(value)
         elif isinstance(attribute, str):
             return value
+        elif isinstance(attribute, Tuple):
+            entry_x, entry_y = widget  # data from two Entry widgets in list
+            return int(entry_x.get()), int(entry_y.get())
         else:
             return self.get_object_from_name(value, name)
 
@@ -713,52 +741,67 @@ class Application(tk.Tk):
         elif attr_name == '_fiefs':
             return self.manager.get_location_by_name(value)
 
-    def lords_listbox_window(self, instance, name: str, variable: Any,
+    def lords_listbox_window(self,
+                             instance: Nobleman,
+                             name: str,
+                             variable: Any,
                              widget=None):
         """Display new window with listbox to pick an option."""
         window = tk.Toplevel()
         window.title(f'Pick new {name.lstrip("_")}')
         window.geometry('350x250')
 
+        listbox = self.create_lords_listbox(variable, widget, window)
+        for name in self.get_data_for_listbox(instance, name):
+            listbox.insert(END, name)
+
+        TkButton(window, text='Confirm and close',
+                 command=window.destroy).pack(side=TOP)
+
+    def create_lords_listbox(self, variable, widget, window):
         listbox = AuthListbox(window, width=30)
+        listbox.bind('<Button-1>',
+                     partial(self.set_variable_value_to_listbox_value,
+                             variable, listbox), add=True)
         if widget is not None:
             listbox.bind('<Button-1>',
                          partial(self.set_widget_value_to_listbox_value,
                                  widget, listbox))
-        listbox.bind('<Button-1>',
-                     partial(self.set_variable_value_to_listbox_value,
-                             variable, listbox), add=True)
-        self.fill_listbox_with_data(listbox, instance, name)
-        listbox.pack(side=TOP)
-        TkButton(window, text='Confirm and close',
-                 command=window.destroy).pack(side=TOP)
+        return pack_widget(listbox, side=TOP)
 
-    def fill_listbox_with_data(self, listbox, instance, name):
+    def get_data_for_listbox(self,
+                             instance: Union[Nobleman, Location],
+                             name: str) -> Generator:
         if name in LORDS_SETS:
             data = self.get_lords_for_listbox(instance, name)
         else:
             data = self.get_locations_for_listbox(instance, name)
-        [listbox.insert(END, e.name) for e in data]
+        return (e.name for e in data)
 
-    def get_lords_for_listbox(self, lord: Nobleman, name: str) -> Union[List, Set]:
+    def get_lords_for_listbox(self, lord: Nobleman, name: str) -> Set:
         if name == '_spouse':
-            sex = Sex.man if lord.sex is Sex.woman else Sex.woman
-            data = self.manager.get_lords_of_sex(sex)
+            data = self.get_potential_spouses(lord)
         elif name == 'liege':
-            data = [noble for noble in self.manager.lords if noble > lord]
+            data = {noble for noble in self.manager.lords if noble > lord}
         elif name in ('_siblings', '_children', '_vassals'):
-            potential = set(self.manager.lords)
-            if name == '_vassals':
-                potential = self.manager.get_potential_vassals_for_lord(lord)
-            attribute = getattr(lord, name)
-            data = potential.difference(attribute)
-            if name == '_children':
-                data = filter(lambda c: lord.age - c.age > 12, data)
+            data = self.get_potential_kins_or_vassals(lord, name)
         else:
-            data = self.manager.lords
+            return self.manager.lords
         return data
 
-    def get_locations_for_listbox(self, instance, name):
+    def get_potential_spouses(self, lord: Nobleman) -> Iterable:
+        sex = Sex.man if lord.sex is Sex.woman else Sex.woman
+        return filter(lambda s: not s.spouse, self.manager.get_lords_of_sex(sex))
+
+    def get_potential_kins_or_vassals(self, lord: Nobleman, name: str) -> Iterable:
+        potential = self.manager.lords
+        if name == '_vassals':
+            potential = self.manager.get_potential_vassals_for_lord(lord)
+        elif name == '_children':
+            potential = filter(lambda c: lord.age - c.age > 12, potential)
+        return set(potential)
+
+    def get_locations_for_listbox(self, instance: Location, name: str):
         return self.manager.locations
 
     @staticmethod

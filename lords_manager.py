@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from functools import lru_cache
-from random import randint, random
+from random import random
 from typing import Tuple
 from classes import *
 
@@ -15,7 +15,7 @@ LORDS_FIEFS = {  # title: (min fiefs, max fiefs)
     Title.duke: (6, 18),
     Title.prince: (8, 24),
     Title.king: (10, 30)
-    }
+}
 
 LORDS_VASSALS = {
     Title.client: {},
@@ -27,7 +27,7 @@ LORDS_VASSALS = {
                   Title.client: 10},
     # Title.duke: {Title.count: 4, Title.baron: 4, Title.baronet: 3,
     #              Title.chevalier: 1, Title.client: 15},
-    }
+}
 
 
 class LordsManager:
@@ -59,7 +59,7 @@ class LordsManager:
     @staticmethod
     def load_names(file_name: str) -> List[str]:
         """Load list of str names from txt file."""
-        with open(file_name, 'r') as file:
+        with open(f'names/{file_name}', 'r') as file:
             names = file.readline().rstrip('\n').split(',')
         return sorted(names)
 
@@ -67,8 +67,9 @@ class LordsManager:
                                   file_name: str = 'lords.txt',
                                   required_lords: int = 0) -> Set[str]:
         """
-        Load full lords names in format {first_name family-first_name} from txt file, check if
-        there is enough names, generate random names if not, and return Set of names.
+        Load full lords names in format {first_name family-first_name} from txt
+        file, check if there is enough names, generate random names if not,
+        and return Set of names.
         """
         lords_names = set()
         while len(lords_names) < required_lords:
@@ -79,8 +80,8 @@ class LordsManager:
 
     def random_lord_name(self, sex: Sex) -> str:
         """
-        Get single nobleman first_name in format: <first_name prefix family-first_name> which fits
-        to the gender of the lord.
+        Get single nobleman first_name in format: <first_name prefix
+        family-first_name> which fits to the gender of the lord.
         """
         name = choice(self.names[sex])
         return f'{name} {choice(self.prefixes)} {choice(self.surnames)}'
@@ -90,14 +91,14 @@ class LordsManager:
             self.load_full_lords_names_set(required_lords=lords_number))
 
         numbers = {Title.baron: 28, Title.baronet: 160,
-            Title.chevalier: 167, Title.client: 1192}
+                   Title.chevalier: 167, Title.client: 1192}
         counts = ['Giovanni di Castiliogne', 'Giovanni di Firenze',
-            'Vittorio di Stravicii', 'Amadeus da Orsini',
-            'Agostino di Mozzenigo']
+                  'Vittorio di Stravicii', 'Amadeus da Orsini',
+                  'Agostino di Mozzenigo']
 
         self._lords = {i: Nobleman(i, name, 20, Nationality.ragada,
                                    Faction.choice(), Title.count)
-                for i, name in enumerate(counts, start=0)}
+                       for i, name in enumerate(counts, start=0)}
 
         for title, counter in numbers.items():
             for i in range(counter):
@@ -111,7 +112,7 @@ class LordsManager:
                                nationality: Nationality = None,
                                title: Title = None) -> Nobleman:
         lord = Nobleman(len(self._lords), name, randint(16, 65),
-                        Nationality.choice() if nationality is None else nationality,
+                        nationality or Nationality.choice(),
                         Faction.choice(),
                         Title.choice() if title is None else title)
         lord.portrait = self.get_generic_portrait_name(lord)
@@ -142,10 +143,12 @@ class LordsManager:
             for discarded in self.discarded:
                 print(f'deleting {discarded.name}')
                 del file[discarded.name]
-        print(f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
+        print(
+            f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
 
     def prepare_for_save(self,
-                         instance: Union[Nobleman, Location]) -> Union[Nobleman, Location]:
+                         instance: Union[Nobleman, Location]) -> Union[
+        Nobleman, Location]:
         """
         When saving instances of Nobleman and location replace their
         references to other instances with these instances id's. It helps
@@ -169,6 +172,8 @@ class LordsManager:
 
     @staticmethod
     def prepare_location_to_save(location: Location) -> Location:
+        if location.type.value not in location.map_icon:
+            location.map_icon = Location.get_proper_map_icon(location)
         if location.owner:
             location.owner = location.owner.id
         return location
@@ -197,7 +202,8 @@ class LordsManager:
             location.owner = self.get_lord_of_id(location.owner)
 
     @staticmethod
-    def _load_data_from_db() -> Tuple[Dict[int, Nobleman], Dict[int, Location]]:
+    def _load_data_from_db() -> Tuple[
+        Dict[int, Nobleman], Dict[int, Location]]:
         import shelve
         lords: Dict[int, Nobleman] = {}
         locations: Dict[int, Location] = {}
@@ -240,23 +246,27 @@ class LordsManager:
         return set(noble for noble in self.lords if noble.title is title)
 
     def get_lords_of_military_rank(self,
-                                   rank: MilitaryRank = MilitaryRank.no_rank) -> Set[Nobleman]:
+                                   rank: MilitaryRank = MilitaryRank.no_rank) -> \
+    Set[Nobleman]:
         if rank is MilitaryRank.no_rank:
             return set(n for n in self.lords if n.military_rank is not rank)
         return set(n for n in self.lords if n.military_rank is rank)
 
-    def get_lords_of_church_title(self, title: ChurchTitle = None) -> Set[Nobleman]:
+    def get_lords_of_church_title(self, title: ChurchTitle = None) -> Set[
+        Nobleman]:
         if title is None:
             return set(noble for noble in self.lords if
                        noble.church_title is not ChurchTitle.no_title)
-        return set(noble for noble in self.lords if noble.church_title is title)
+        return set(
+            noble for noble in self.lords if noble.church_title is title)
 
     def get_potential_vassals_for_lord(self,
                                        lord: Nobleman,
                                        title: Title = None) -> Set[Nobleman]:
         potential = set(v for v in self.get_lords_without_liege() if v < lord)
-        if Title is not None:
-            return set(v for v in potential if v.title is title)
+        if title is not None:
+            potential = set(v for v in potential if v.title is title)
+        potential.discard(lord)
         return potential
 
     def get_lords_without_liege(self) -> Set[Nobleman]:
@@ -266,7 +276,8 @@ class LordsManager:
         return set(noble for noble in self.lords if noble.faction is faction)
 
     def get_locations_of_type(self,
-                              locations_type: LocationType = None) -> Set[Location]:
+                              locations_type: LocationType = None) -> Set[
+        Location]:
         if locations_type is None:
             return set(self.locations)
         return set(loc for loc in self.locations if loc.type is locations_type)
@@ -282,7 +293,8 @@ class LordsManager:
 
     @lru_cache(maxsize=1024)
     def get_location_by_name(self, name: str) -> Location:
-        return (loc for loc in self.locations if name in loc.full_name).__next__()
+        return (loc for loc in self.locations if
+                name in loc.full_name).__next__()
 
     def get_vassals_of(self, liege: Union[Nobleman, str]) -> Set[Nobleman]:
         if isinstance(liege, str):
@@ -319,8 +331,10 @@ class LordsManager:
         self.discarded.add(discarded)
 
     def collection(self,
-                   obj: Union[Nobleman, Location]) -> Union[Set[Nobleman], Set[Location]]:
-        return set(self.lords) if isinstance(obj, Nobleman) else set(self.locations)
+                   obj: Union[Nobleman, Location]) -> Union[
+        Set[Nobleman], Set[Location]]:
+        return set(self.lords) if isinstance(obj, Nobleman) else set(
+            self.locations)
 
     def clear(self):
         self._lords.clear()
@@ -356,7 +370,8 @@ class LordsManager:
             lords = self.get_lords_of_title(title)
             for lord in lords:
                 for vassal_title, count in LORDS_VASSALS[lord.title].items():
-                    available = self.get_potential_vassals_for_lord(lord, vassal_title)
+                    available = self.get_potential_vassals_for_lord(lord,
+                                                                    vassal_title)
                     for i in range(count):
                         if len(lord.vassals_of_title(vassal_title)) == count:
                             continue
@@ -381,10 +396,10 @@ class LordsManager:
             Title.baronet: len(self.get_lords_of_title(Title.baronet)),
             Title.chevalier: len(self.get_lords_of_title(Title.chevalier)),
             Title.client: len(self.get_lords_of_title(Title.client)),
-            }
+        }
 
         counter = {Title.baron: 0, Title.baronet: 0, Title.chevalier: 0,
-                  Title.client: 0}
+                   Title.client: 0}
 
         for title, vassals in LORDS_VASSALS.items():
             for i in range(real_numbners[title]):
