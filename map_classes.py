@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Set, Optional, Callable, Union, Tuple, List
 from arcade import (
-    Window, Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor,
-    Texture, draw_text, draw_circle_outline, draw_ellipse_outline
+    Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor, draw_text,
+    draw_ellipse_outline
 )
 from arcade.color import WHITE, BLACK, GREEN, DUTCH_WHITE
 
@@ -15,7 +15,10 @@ from classes import Location
 Color = Union[Tuple[int, int, int, int], Tuple[int, int, int], List[int]]
 
 
+# constants:
 ALPHA: Color = (0, 0, 0, 0)
+HORIZONTAL = 'HORIZONTAL'
+VERTICAL = 'VERTICAL'
 
 
 class Visible:
@@ -208,8 +211,8 @@ class UiText(Visible, CursorInteractive, SpriteSolidColor):
                  text: str,
                  x: int,
                  y: int,
-                 width: int,
-                 height: int,
+                 width: int = 1,
+                 height: int = 1,
                  text_color: Color = BLACK,
                  background_color: Color = ALPHA,
                  visible: bool = True,
@@ -217,13 +220,71 @@ class UiText(Visible, CursorInteractive, SpriteSolidColor):
                  parent: Hierarchical = None):
         Visible.__init__(self, visible)
         CursorInteractive.__init__(self, active, parent=parent)
-        SpriteSolidColor.__init__(self, x, y, width, height, background_color)
+        SpriteSolidColor.__init__(self, 0, 0, width, height, background_color)
         self.text = text
+        self.text_x = x
+        self.text_y = y
         self.text_color = text_color
+
+    def set_text(self, text: str):
+        self.text = text
 
     def draw(self):
         super().draw()
-        draw_text(self.text, self.center_x, self.center_y, self.text_color, self.height)
+        draw_text(self.text, self.text_x, self.text_y, self.text_color, self.height)
+
+
+class TextField(Visible, CursorInteractive, SpriteSolidColor):
+    """
+    This ovbject contains two Uitext objects. First is a static label
+    containing name of the text field and second is a dynamic text field
+    containing actual value.
+    """
+
+    def __init__(self,
+                 x: int,
+                 y: int,
+                 label_text: str = 'Field name:',
+                 value_text: str = '',
+                 orientation: str = HORIZONTAL,
+                 text_size: int = 12,
+                 label_color: Color = BLACK,
+                 text_color: Color = BLACK,
+                 visible: bool = True,
+                 active: bool = True,
+                 parent: Hierarchical = None
+                 ):
+        Visible.__init__(self, visible)
+        CursorInteractive.__init__(self, active, parent=parent)
+        SpriteSolidColor.__init__(self, 0, 0, 1, 1, ALPHA)
+        self.orientation = orientation
+        self._label_text = label_text
+        self._value_text = value_text
+        self.label_color = label_color
+        self.text_color = text_color
+        self.text_size = text_size
+        self.text_x = x
+        self.text_y = y
+
+    @property
+    def value_text(self) -> str:
+        return self._value_text
+
+    @value_text.setter
+    def value_text(self, value: str):
+        self._value_text = value
+
+    def draw(self):
+        super().draw()
+        x, y = self.text_x, self.text_y
+        color, size = self.text_color, self.text_size
+        if self.orientation == HORIZONTAL:
+            text = f'{self._label_text} {self.value_text}'
+            draw_text(text, x, y, color, size)
+        else:
+            draw_text(self._label_text, x, y, color, size)
+            y -= size * 1.5
+            draw_text(self._value_text, x, y, color, size)
 
 
 class Button(Visible, CursorInteractive, Sprite):
@@ -275,12 +336,6 @@ class MapIcon(Visible, CursorInteractive, Sprite):
                                    function_on_left_click,
                                    function_on_right_click,
                                    parent=parent)
-
-    def on_mouse_press(self, button: int):
-        print(f'Mouse button {button} clicked on {self}')
-        if self.function_on_left_click is not None:
-            self.function_on_left_click(self.location)
-        self.dragged = self.can_be_dragged
 
     def _func_on_mouse_enter(self):
         self.map_label.text_color = GREEN

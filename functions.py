@@ -125,16 +125,6 @@ def remove_arcade_window_from_returned_value(func: Callable):
     return remover
 
 
-def mark_spouses(func: Callable):
-    from classes import Nobleman
-
-    @wraps(func)
-    def marker(*args, **kwargs):
-        if isinstance(args[2], Nobleman):
-            result = func(*args, **kwargs)
-    return marker
-
-
 def get_current_language():
     with open('config.txt', 'r') as config:
         language = config.readline().rstrip('\n')
@@ -142,4 +132,5 @@ def get_current_language():
 
 
 def no_spaces(text: str) -> str:
+    """Replace all spaces with underscores."""
     return text.replace(' ', '_')

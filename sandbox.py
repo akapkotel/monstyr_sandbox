@@ -156,6 +156,9 @@ class Sandbox(arcade.View):
         del self.map_icons_to_labels
         self.ui_elements: UiSpriteList = self.create_ui_elements_spritelist()
 
+        # reference used to keep window alive when it is not drawn
+        self.location_window = self.create_location_window()
+
         self.testing_ideas()  # TODO: discard this before release
 
         # to draw and update everything with one instruction in on_draw()
@@ -173,7 +176,7 @@ class Sandbox(arcade.View):
         for location in self.manager.locations:
             map_icon = MapIcon(location, location.map_icon,
                                function_on_left_click=
-                               self.open_location_window)
+                               partial(self.open_location_window, location))
             # used later to bind text map label to map icon:
             self.map_icons_to_labels[location.id] = map_icon
             locations.append(map_icon)
@@ -218,26 +221,69 @@ class Sandbox(arcade.View):
         for obj in self.drawn:
             obj.draw()
 
-    def open_location_window(self, location: Location):
+    def create_location_window(self) -> Dict[str, Union[UiPanel, List[Union[TextField, Button]]]]:
+        """
+        All Ui elements of window are instantiated once at the beginning,
+        to make opening the window by user faster. All elements are
+        reusable and their values are dynamically changed, when user clicks
+        on the MapIcon.
+        There are two kind of Ui elements: static labels, and dynamic text
+        fields which are filled each time, when user opens the window and
+        updated with the proper values of Location attributes.
+        """
+        window, fields, buttons = None, [], []
         x, y = int(SCREEN_WIDTH // 2), int(SCREEN_HEIGHT // 2)
         width = int((SCREEN_WIDTH - 300) * 0.7)
         height = int(SCREEN_HEIGHT * 0.7)
 
         window = UiPanelFactory.new(x, y, width, height, DUTCH_WHITE)
-
-        # window contents:
         y = y - 50 + height // 2
-        location_name = UiText(
-            location.name, x, y, width, 20, BLACK, parent=window)
-        close_btn = self.new_close_button(window, width, x, y)
+        buttons.append(self.new_close_button(window, width, x, y))
 
-        # start updating and drawing window on the screen:
-        self.ui_elements.extend([window, location_name, close_btn])
+        attributes = ['',
+                      f'Location type:',
+                      f'Owner:',
+                      f'Faction:',
+                      f'Population:',
+                      f'Garrison:']
+
+        for i, attr in enumerate(a for a in attributes):
+            ix = x - (width / 2) + 50 if i else int(SCREEN_WIDTH // 2)
+            field = TextField(ix, y, attr, text_size=20, parent=window)
+            fields.append(field)
+            y -= 50
+        return {'window': window, 'fields': fields, 'buttons': buttons}
 
     def new_close_button(self, location_window, width, x, y) -> Button:
         x = x - 30 + (width // 2)
         function = partial(self.close_window, location_window)
         return Button('close', x, y + 20, function, parent=location_window)
+
+    def open_location_window(self, location: Location):
+        """
+        Display window with Location detail when user clicks on it's MapIcon.
+        """
+        # to avoid instantiating fields each time, window is reopened,
+        # we keep the TextField instances and other Ui elements cached:
+        cached_window = self.location_window
+        window = cached_window['window']
+        fields: List[TextField] = cached_window['fields']
+        buttons = cached_window['buttons']
+        # and only fill their values with correct data from actual Location
+        # instance:
+        attributes = (
+            location.name, location.type.value, location.owner.name,
+            location.faction.value, location.population,
+            location.soldiers
+        )
+        for i, attr in enumerate(a for a in attributes):
+            if attr:
+                fields[i].value_text = str(attr)
+            else:
+                fields[i].value_text = '0' if isinstance(attr, int) else ''
+
+        # start updating and drawing window on the screen:
+        self.ui_elements.extend([window] + fields + buttons)
 
     def close_window(self, window: UiPanel):
         for child in window.children:
