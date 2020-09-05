@@ -15,7 +15,7 @@ from tkinter import (
     SUNKEN, Button as TkButton
 )
 from functions import (load_image_or_placeholder, plural, localize,
-    input_match_search, get_current_language
+    input_match_search, get_current_language, slot_to_text
 )
 from classes import *
 from lords_manager import LordsManager
@@ -438,7 +438,8 @@ class Application(tk.Tk):
                                                  variable, widget)
             container.pack(side=TOP, expand=True, fill=BOTH)
 
-            data.append((name, attr, widget, variable))  # step 1
+            data.append((name, attr, variable, widget))  # step 1
+
         AuthButton(window, text=f'Save {instance.__class__.__name__}',
                    command=lambda: self.save_instance(instance, data)).pack(
             side=TOP)  # step 2
@@ -466,7 +467,7 @@ class Application(tk.Tk):
 
     @staticmethod
     def generate_label(container, name) -> Label:
-        label_text = f"{name.replace('_', ' ').lstrip(' ').title()}:"
+        label_text = slot_to_text(name)
         return Label(container, text=label_text, bd=1, anchor='w',
                      width=15).pack(side=LEFT, fill=BOTH, expand=False)
 
@@ -673,7 +674,7 @@ class Application(tk.Tk):
     def save_single_attribute(self,
                               instance: Union[Nobleman, Location],
                               tuple_: Tuple):
-        name, attribute, widget, variable = tuple_
+        name, attribute, variable, widget = tuple_
         if name in ('portrait', 'image'):
             value = variable.get()
         else:

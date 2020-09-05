@@ -8,9 +8,6 @@ from typing import List, Set, Dict, Union, Optional
 from enums import *
 
 
-RAGADAN = 'Ragada'
-
-
 class Nobleman:
     """Base class for all noblemen in sandbox."""
 

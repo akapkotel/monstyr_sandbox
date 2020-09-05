@@ -125,6 +125,15 @@ def remove_arcade_window_from_returned_value(func: Callable):
     return remover
 
 
+def open_if_not_opened(func, window, spritelist):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        window = func(*args, **kwargs)
+        if window[0] not in spritelist:
+            spritelist.append(window)
+    return wrapper
+
+
 def get_current_language():
     with open('config.txt', 'r') as config:
         language = config.readline().rstrip('\n')
@@ -134,3 +143,11 @@ def get_current_language():
 def no_spaces(text: str) -> str:
     """Replace all spaces with underscores."""
     return text.replace(' ', '_')
+
+
+def slots_to_text_fields(_object, no_fields):
+    return [slot_to_text(a) for a in _object.__slots__ if a not in no_fields]
+
+
+def slot_to_text(slot: str) -> str:
+    return slot.lstrip('_').replace('_', ' ').title()

@@ -338,21 +338,20 @@ class MapIcon(Visible, CursorInteractive, Sprite):
                                    parent=parent)
 
     def _func_on_mouse_enter(self):
-        self.map_label.text_color = GREEN
+        self.map_label.on_mouse_enter()
         self.create_map_indicator()
 
     def create_map_indicator(self):
-        spritelist = self.map_label.sprite_lists[0]
-        indicator = MapIndicator(*self.position, 60, 60, 60, ALPHA)
-        self.map_indicator = indicator
+        spritelist: SpriteList = self.map_label.sprite_lists[0]
+        self.map_indicator = indicator = MapIndicator(*self.position, 60, 60, 60)
         spritelist.append(indicator)
 
     def _func_on_mouse_exit(self):
-        self.map_label.text_color = WHITE
+        self.map_label.on_mouse_exit()
         self.kill_map_indicator()
 
     def kill_map_indicator(self):
-        spritelist = self.map_label.sprite_lists[0]
+        spritelist: SpriteList = self.map_label.sprite_lists[0]
         spritelist.remove(self.map_indicator)
         self.map_indicator = None
 
@@ -360,8 +359,8 @@ class MapIcon(Visible, CursorInteractive, Sprite):
 class MapIndicator(SpriteSolidColor):
     """Draw circular indicator around mouse-pointed MapIcon on the map."""
 
-    def __init__(self, x: int, y: int, radius: int, width: int, height: int, color: Color):
-        super().__init__(x, y, width, height, color)
+    def __init__(self, x: int, y: int, radius: int, width: int, height: int):
+        super().__init__(x, y, width, height, ALPHA)
         self.radius = radius
 
     def draw(self):
@@ -393,9 +392,16 @@ class MapTextLabel(UiText):
     def bind_to_map_icon(self):
         self.map_icon.map_label = self
 
+    def on_mouse_enter(self):
+        self.text_color = GREEN
+
+    def on_mouse_exit(self):
+        self.text_color = WHITE
+
 
 class UiSpriteList(SpriteList):
     """
     Wrapper for SpriteLists containing only UiPanels and Buttons used to
     cheaply identify them in on_draw() to call their draw() methods.
     """
+    ...

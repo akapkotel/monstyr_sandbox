@@ -5,11 +5,16 @@ import arcade
 from random import uniform
 from arcade.color import GREEN, DARK_MOSS_GREEN
 from functools import partial
+from itertools import chain
 
 from lords_manager import LordsManager
 from map_classes import *
 from functions import *
 from classes import *
+
+
+# typing aliases:
+WindowElements = Union[UiPanel, List[TextField], List[Button]]
 
 
 get_sprites_at_point = arcade.get_sprites_at_point
@@ -150,14 +155,15 @@ class Sandbox(arcade.View):
         self.map_icons_to_labels: Dict[int, MapIcon] = {}
 
         # --- arcade SpriteLists ---
-        self.terrain = SpriteList(is_static=True)
+        self.terrain = SpriteList(use_spatial_hash=True, is_static=True)
         self.map_icons: SpriteList = self.create_map_icons_spritelist()
         self.map_labels: UiSpriteList = self.create_map_labels_spritelist()
         del self.map_icons_to_labels
         self.ui_elements: UiSpriteList = self.create_ui_elements_spritelist()
 
         # reference used to keep window alive when it is not drawn
-        self.location_window = self.create_location_window()
+        self.location_window = self.create_window(Location)
+        self.lord_window = self.create_window(Nobleman)
 
         self.testing_ideas()  # TODO: discard this before release
 
@@ -172,18 +178,18 @@ class Sandbox(arcade.View):
         return [attr for attr in self.__dict__.values() if hasattr(attr, name)]
 
     def create_map_icons_spritelist(self) -> SpriteList:
-        locations = SpriteList(is_static=True)
+        locations = SpriteList(use_spatial_hash=True, is_static=True)
         for location in self.manager.locations:
             map_icon = MapIcon(location, location.map_icon,
                                function_on_left_click=
-                               partial(self.open_location_window, location))
+                               partial(self.show_location_window, location))
             # used later to bind text map label to map icon:
             self.map_icons_to_labels[location.id] = map_icon
             locations.append(map_icon)
         return locations
 
     def create_map_labels_spritelist(self) -> UiSpriteList:
-        map_labels = UiSpriteList(is_static=True)
+        map_labels = UiSpriteList(use_spatial_hash=True, is_static=True)
         for location in self.manager.locations:
             x, y = location.position
             map_icon = self.map_icons_to_labels[location.id]
@@ -221,7 +227,7 @@ class Sandbox(arcade.View):
         for obj in self.drawn:
             obj.draw()
 
-    def create_location_window(self) -> Dict[str, Union[UiPanel, List[Union[TextField, Button]]]]:
+    def create_window(self, window_type) -> Dict[str, WindowElements]:
         """
         All Ui elements of window are instantiated once at the beginning,
         to make opening the window by user faster. All elements are
@@ -229,27 +235,26 @@ class Sandbox(arcade.View):
         on the MapIcon.
         There are two kind of Ui elements: static labels, and dynamic text
         fields which are filled each time, when user opens the window and
-        updated with the proper values of Location attributes.
+        updated with the proper values of Location or Nobleman attributes.
         """
         window, fields, buttons = None, [], []
         x, y = int(SCREEN_WIDTH // 2), int(SCREEN_HEIGHT // 2)
-        width = int((SCREEN_WIDTH - 300) * 0.7)
-        height = int(SCREEN_HEIGHT * 0.7)
+        width = int((SCREEN_WIDTH - 300) * 0.5)
+        height = int(SCREEN_HEIGHT * 0.5)
 
         window = UiPanelFactory.new(x, y, width, height, DUTCH_WHITE)
         y = y - 50 + height // 2
         buttons.append(self.new_close_button(window, width, x, y))
 
-        attributes = ['',
-                      f'Location type:',
-                      f'Owner:',
-                      f'Faction:',
-                      f'Population:',
-                      f'Garrison:']
+        attributes = {
+            Location: ['', f'Location type:', f'Owner:', f'Faction:',
+                       f'Population:', f'Garrison:'],
+            Nobleman: slots_to_text_fields(Nobleman, no_fields=('id', 'portrait'))
+        }[window_type]
 
         for i, attr in enumerate(a for a in attributes):
-            ix = x - (width / 2) + 50 if i else int(SCREEN_WIDTH // 2)
-            field = TextField(ix, y, attr, text_size=20, parent=window)
+            xi = x - (width / 2) + 50 if i else int(SCREEN_WIDTH // 2)
+            field = TextField(xi, y, attr, text_size=20, parent=window)
             fields.append(field)
             y -= 50
         return {'window': window, 'fields': fields, 'buttons': buttons}
@@ -259,16 +264,13 @@ class Sandbox(arcade.View):
         function = partial(self.close_window, location_window)
         return Button('close', x, y + 20, function, parent=location_window)
 
-    def open_location_window(self, location: Location):
+    def show_location_window(self, location: Location):
         """
         Display window with Location detail when user clicks on it's MapIcon.
         """
         # to avoid instantiating fields each time, window is reopened,
         # we keep the TextField instances and other Ui elements cached:
-        cached_window = self.location_window
-        window = cached_window['window']
-        fields: List[TextField] = cached_window['fields']
-        buttons = cached_window['buttons']
+        window, fields, buttons = self.location_window.values()
         # and only fill their values with correct data from actual Location
         # instance:
         attributes = (
@@ -281,9 +283,21 @@ class Sandbox(arcade.View):
                 fields[i].value_text = str(attr)
             else:
                 fields[i].value_text = '0' if isinstance(attr, int) else ''
-
+        self.location_window = {
+            'window': window,
+            'fields': fields,
+            'buttons': buttons
+        }
         # start updating and drawing window on the screen:
-        self.ui_elements.extend([window] + fields + buttons)
+        self.open_window_if_not_opened(self.location_window, self.ui_elements)
+
+    @staticmethod
+    def open_window_if_not_opened(window_elements: Dict, spritelist: SpriteList):
+        # we add new window only when it is not already opened (in case of
+        # clicking again on the same MapIcon, or opening another instance)
+        window, fields, buttons = window_elements.values()
+        if window not in spritelist:
+            spritelist.extend([window] + fields + buttons)
 
     def close_window(self, window: UiPanel):
         for child in window.children:
