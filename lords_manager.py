@@ -180,7 +180,7 @@ class LordsManager:
 
     def convert_ids_to_instances(self, instance: Union[Nobleman, Location]):
         # Since we saved our instances with id's instead of the other objects
-        # references, we need to get our references back, when loading our
+        # references, we need to get_data our references back, when loading our
         # instance:
         if isinstance(instance, Nobleman):
             self.convert_ids_to_noblemen(instance)
@@ -387,7 +387,7 @@ class LordsManager:
 
     def enough_lords(self):
         """
-        Check if there is enough number od Nobleman of each Title to get
+        Check if there is enough number od Nobleman of each Title to get_data
         correct amount of vassals for each lord in game.
         """
         real_numbners = {

@@ -381,9 +381,9 @@ class Application(tk.Tk):
     @staticmethod
     def get_instance_name(event: tk.Event) -> str:
         if isinstance(widget := event.widget, Listbox):
-            name = widget.get(ACTIVE)
+            name = widget.get_data(ACTIVE)
         else:  # Entry widget
-            name = widget.get()
+            name = widget.get_data()
         return name
 
     def open_new_or_show_opened_window(self, instance):
@@ -402,7 +402,7 @@ class Application(tk.Tk):
 
     def new_instance_and_window(self, object_type: Union[
         type(Nobleman), type(Location)]):
-        if object_type == Nobleman:
+        if object_type is Nobleman:
             instance = Nobleman(len(self.manager.lords), 'ADD NAME',
                                 nationality=Nationality.choice())
         else:
@@ -676,7 +676,7 @@ class Application(tk.Tk):
                               tuple_: Tuple):
         name, attribute, variable, widget = tuple_
         if name in ('portrait', 'image'):
-            value = variable.get()
+            value = variable.get_data()
         else:
             value = self.convert_data_to_attribute(name, attribute, widget)
         setattr(instance, name, value)
@@ -693,7 +693,7 @@ class Application(tk.Tk):
             return value
         elif isinstance(attribute, Tuple):
             entry_x, entry_y = widget  # data from two Entry widgets in list
-            return int(entry_x.get()), int(entry_y.get())
+            return int(entry_x.get_data()), int(entry_y.get_data())
         else:
             return self.get_object_from_name(value, name)
 

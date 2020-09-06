@@ -3,9 +3,8 @@
 import arcade
 
 from random import uniform
-from arcade.color import GREEN, DARK_MOSS_GREEN
+from arcade.color import DARK_MOSS_GREEN
 from functools import partial
-from itertools import chain
 
 from lords_manager import LordsManager
 from map_classes import *
@@ -14,18 +13,21 @@ from classes import *
 
 
 # typing aliases:
-WindowElements = Union[UiPanel, List[TextField], List[Button]]
+InstanceType = Union[type(Location), type(Nobleman)]
 
-
+# cached references:
 get_sprites_at_point = arcade.get_sprites_at_point
 
-
+# constants:
 SCREEN_WIDTH, SCREEN_HEIGHT = get_screen_size()
+HALF_SCREEN_WIDTH = int(SCREEN_WIDTH // 2)
+HALF_SCREEN_HEIGHT = int(SCREEN_HEIGHT // 2)
 SCREEN_TITLE = 'Monastyr Sandbox'
 FULL_SCREEN = False
 LOADING_VIEW = 'loading view'
 SANDBOX_VIEW = 'sandbox view'
 MENU_VIEW = 'menu view'
+WINDOW_MARGIN = 50
 
 
 class Application(arcade.Window):
@@ -93,6 +95,7 @@ class Application(arcade.Window):
         # cursor-pointed elements in backward order: last draw, is first to
         # be mouse-pointed (it lies on the top)
         if (pointed_sprite := self.cursor_dragged) is None:
+            assert hasattr(self._current_view, 'drawn') is True
             for drawn in self._current_view.drawn[::-1]:
                 if not (pointed_sprite := self.cursor_points(drawn, x, y)):
                     continue
@@ -111,7 +114,8 @@ class Application(arcade.Window):
             s: CursorInteractive
             for sprite in (s for s in pointed if not s.children):
                 return sprite
-        return None
+            else:
+                return pointed[0]  # return pointed Sprite if no children found
 
     def on_mouse_motion(self, x: float, y: float, dx: float, dy: float):
         self.cursor_position = x, y, dx, dy
@@ -136,17 +140,11 @@ class Application(arcade.Window):
         self.switch_view(MENU_VIEW)
 
 
-class Sandbox(arcade.View):
+class Sandbox(Singleton, arcade.View):
     """Main view displaying actual map."""
-    instance = None
-
-    def __new__(cls, *args, **kwargs):
-        if Sandbox.instance is None:
-            return super().__new__(cls)
-        else:
-            return Sandbox.instance
 
     def __init__(self):
+        Singleton().__init__()
         super().__init__()
 
         self.manager = LordsManager()
@@ -162,8 +160,8 @@ class Sandbox(arcade.View):
         self.ui_elements: UiSpriteList = self.create_ui_elements_spritelist()
 
         # reference used to keep window alive when it is not drawn
-        self.location_window = self.create_window(Location)
-        self.lord_window = self.create_window(Nobleman)
+        self.location_window: WindowContainer = self.create_window(Location)
+        self.lord_window: WindowContainer = self.create_window(Nobleman)
 
         self.testing_ideas()  # TODO: discard this before release
 
@@ -171,7 +169,6 @@ class Sandbox(arcade.View):
         # and on_update() methods:
         self.drawn = self.get_attributes_of_name('draw')
         self.updated = self.get_attributes_of_name('update')
-        Sandbox.instance = self
 
     @remove_arcade_window_from_returned_value
     def get_attributes_of_name(self, name: str) -> List:
@@ -227,7 +224,7 @@ class Sandbox(arcade.View):
         for obj in self.drawn:
             obj.draw()
 
-    def create_window(self, window_type) -> Dict[str, WindowElements]:
+    def create_window(self, window_type) -> WindowContainer:
         """
         All Ui elements of window are instantiated once at the beginning,
         to make opening the window by user faster. All elements are
@@ -238,64 +235,96 @@ class Sandbox(arcade.View):
         updated with the proper values of Location or Nobleman attributes.
         """
         window, fields, buttons = None, [], []
-        x, y = int(SCREEN_WIDTH // 2), int(SCREEN_HEIGHT // 2)
+        x, y = HALF_SCREEN_WIDTH, HALF_SCREEN_HEIGHT
         width = int((SCREEN_WIDTH - 300) * 0.5)
-        height = int(SCREEN_HEIGHT * 0.5)
+        height = HALF_SCREEN_HEIGHT
 
         window = UiPanelFactory.new(x, y, width, height, DUTCH_WHITE)
-        y = y - 50 + height // 2
-        buttons.append(self.new_close_button(window, width, x, y))
 
-        attributes = {
-            Location: ['', f'Location type:', f'Owner:', f'Faction:',
-                       f'Population:', f'Garrison:'],
-            Nobleman: slots_to_text_fields(Nobleman, no_fields=('id', 'portrait'))
-        }[window_type]
+        y = y - WINDOW_MARGIN + height // 2
+        buttons.append(self.new_close_window_button(window, width, x, y))
 
-        for i, attr in enumerate(a for a in attributes):
-            xi = x - (width / 2) + 50 if i else int(SCREEN_WIDTH // 2)
-            field = TextField(xi, y, attr, text_size=20, parent=window)
+        fields_names = self.get_fields_names(window_type)
+        fields = self.create_fields(fields_names, width, window, x, y)
+
+        return WindowContainer(window=window, fields=fields, buttons=buttons)
+
+    @staticmethod
+    def create_fields(fields_names, width, window, x, y):
+        fields = []
+        for i, field_name in enumerate(a for a in fields_names):
+            xi = x - (width / 2) + WINDOW_MARGIN if i else HALF_SCREEN_WIDTH
+            field_name = '' if field_name == 'Name:' else field_name
+            field = TextField(xi, y, field_name, text_size=20, parent=window)
             fields.append(field)
             y -= 50
-        return {'window': window, 'fields': fields, 'buttons': buttons}
+        return fields
 
-    def new_close_button(self, location_window, width, x, y) -> Button:
+    def get_fields_names(self, window_type: InstanceType) -> List[str]:
+        ignore_fields = self.ignored_fields(window_type)
+        return {
+            Location: slots_to_fields(Location, ignore_fields),
+            Nobleman: slots_to_fields(Nobleman, ignore_fields)
+        }[window_type]
+
+    @staticmethod
+    def ignored_fields(window_type: InstanceType) -> Tuple:
+        return {
+            Location: ('id', 'map_icon', 'picture', 'position'),
+            Nobleman: ('id', 'portrait')
+        }[window_type]
+
+    def get_attributes_names(self, window_type: InstanceType) -> List[str]:
+        ignore_fields = self.ignored_fields(window_type)
+        return filtered_slots_names(window_type, ignore_fields)
+
+    def new_close_window_button(self, window, width, x, y) -> Button:
         x = x - 30 + (width // 2)
-        function = partial(self.close_window, location_window)
-        return Button('close', x, y + 20, function, parent=location_window)
+        function = partial(self.close_window, window)
+        return Button('close', x, y + 20, function, parent=window)
 
-    def show_location_window(self, location: Location):
+    def show_location_window(self, instance: Union[Location, Nobleman]):
         """
         Display window with Location detail when user clicks on it's MapIcon.
         """
         # to avoid instantiating fields each time, window is reopened,
         # we keep the TextField instances and other Ui elements cached:
-        window, fields, buttons = self.location_window.values()
+        cached_window = self.location_window if isinstance(instance, Location) else self.lord_window
+        window, fields, buttons = cached_window.get_data()
         # and only fill their values with correct data from actual Location
         # instance:
-        attributes = (
-            location.name, location.type.value, location.owner.name,
-            location.faction.value, location.population,
-            location.soldiers
-        )
+        self.fill_fields_with_instance_data(fields, instance)
+        # start updating and drawing window on the screen:
+        self.open_window_if_not_opened(self.location_window, self.ui_elements)
+
+    def fill_fields_with_instance_data(self,
+                                       fields: List[TextField],
+                                       instance: Union[Location, Nobleman]):
+        attributes = self.get_attributes(instance)
         for i, attr in enumerate(a for a in attributes):
             if attr:
                 fields[i].value_text = str(attr)
             else:
                 fields[i].value_text = '0' if isinstance(attr, int) else ''
-        self.location_window = {
-            'window': window,
-            'fields': fields,
-            'buttons': buttons
-        }
-        # start updating and drawing window on the screen:
-        self.open_window_if_not_opened(self.location_window, self.ui_elements)
+
+    def get_attributes(self, instance: Union[Location, Nobleman]) -> List[str]:
+        attributes_names = self.get_attributes_names(type(instance))
+        attributes = []
+        for name in attributes_names:
+            if isinstance(attribute := getattr(instance, name), MyEnum):
+                attributes.append(attribute.value)
+            elif isinstance(attribute, (Location, Nobleman)):
+                attributes.append(attribute.name)
+            else:
+                attributes.append(str(attribute))
+        return attributes
 
     @staticmethod
-    def open_window_if_not_opened(window_elements: Dict, spritelist: SpriteList):
+    def open_window_if_not_opened(window_container: WindowContainer,
+                                  spritelist: SpriteList):
         # we add new window only when it is not already opened (in case of
         # clicking again on the same MapIcon, or opening another instance)
-        window, fields, buttons = window_elements.values()
+        window, fields, buttons = window_container.get_data()  # window_elements.values()
         if window not in spritelist:
             spritelist.extend([window] + fields + buttons)
 

@@ -145,9 +145,13 @@ def no_spaces(text: str) -> str:
     return text.replace(' ', '_')
 
 
-def slots_to_text_fields(_object, no_fields):
-    return [slot_to_text(a) for a in _object.__slots__ if a not in no_fields]
+def slots_to_fields(_object, ignore_fields: Tuple) -> List[str]:
+    return [slot_to_field(s) for s in filtered_slots_names(_object, ignore_fields)]
 
 
-def slot_to_text(slot: str) -> str:
-    return slot.lstrip('_').replace('_', ' ').title()
+def filtered_slots_names(_object, ignore_fields: Tuple) -> List[str]:
+    return [slot for slot in _object.__slots__ if slot not in ignore_fields]
+
+
+def slot_to_field(slot: str) -> str:
+    return f"{slot.lstrip('_').replace('_', ' ').title()}:"

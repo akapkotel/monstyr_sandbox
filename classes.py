@@ -201,9 +201,9 @@ class Location:
         self.id: id = id
         self.picture = picture
         self.name = name or location_type.value
+        self.type = location_type
         self.map_icon = self.get_proper_map_icon(self)
         self.position = position
-        self.type = location_type
         self.owner = owner
         self.faction = Faction.neutral if owner is None else owner.faction
         self.population = population

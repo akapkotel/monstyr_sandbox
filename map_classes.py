@@ -3,9 +3,10 @@ from __future__ import annotations
 
 
 from typing import Set, Optional, Callable, Union, Tuple, List
+from dataclasses import dataclass
 from arcade import (
-    Sprite, SpriteList, SpriteSolidColor as ArcadeSpriteSolidColor, draw_text,
-    draw_ellipse_outline
+    Sprite, SpriteList, draw_text, draw_ellipse_outline,
+    SpriteSolidColor as ArcadeSpriteSolidColor,
 )
 from arcade.color import WHITE, BLACK, GREEN, DUTCH_WHITE
 
@@ -399,9 +400,31 @@ class MapTextLabel(UiText):
         self.text_color = WHITE
 
 
+@dataclass
+class WindowContainer:
+    window: UiPanel
+    fields: List[TextField]
+    buttons: List[Button]
+
+    def get_data(self) -> Tuple[UiPanel, List, List]:
+        return self.window, self.fields, self.buttons
+
+
 class UiSpriteList(SpriteList):
     """
     Wrapper for SpriteLists containing only UiPanels and Buttons used to
     cheaply identify them in on_draw() to call their draw() methods.
     """
     ...
+
+
+class Singleton:
+    instances = {}
+
+    def __new__(cls, *args, **kwargs):
+        if (singleton := Singleton.instances.get(cls)) is None:
+            instance = super().__new__(cls)
+            Singleton.instances[cls] = instance
+            return instance
+        else:
+            return singleton
