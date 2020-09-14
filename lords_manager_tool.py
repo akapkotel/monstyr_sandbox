@@ -15,7 +15,7 @@ from tkinter import (
     SUNKEN, Button as TkButton
 )
 from functions import (load_image_or_placeholder, plural, localize,
-    input_match_search, get_current_language, slot_to_text
+    input_match_search, get_current_language, slot_to_field
 )
 from classes import *
 from lords_manager import LordsManager
@@ -381,9 +381,9 @@ class Application(tk.Tk):
     @staticmethod
     def get_instance_name(event: tk.Event) -> str:
         if isinstance(widget := event.widget, Listbox):
-            name = widget.get_data(ACTIVE)
+            name = widget.get(ACTIVE)
         else:  # Entry widget
-            name = widget.get_data()
+            name = widget.get()
         return name
 
     def open_new_or_show_opened_window(self, instance):
@@ -467,7 +467,7 @@ class Application(tk.Tk):
 
     @staticmethod
     def generate_label(container, name) -> Label:
-        label_text = slot_to_text(name)
+        label_text = slot_to_field(name)
         return Label(container, text=label_text, bd=1, anchor='w',
                      width=15).pack(side=LEFT, fill=BOTH, expand=False)
 
@@ -676,7 +676,7 @@ class Application(tk.Tk):
                               tuple_: Tuple):
         name, attribute, variable, widget = tuple_
         if name in ('portrait', 'image'):
-            value = variable.get_data()
+            value = variable.get()
         else:
             value = self.convert_data_to_attribute(name, attribute, widget)
         setattr(instance, name, value)
@@ -693,7 +693,7 @@ class Application(tk.Tk):
             return value
         elif isinstance(attribute, Tuple):
             entry_x, entry_y = widget  # data from two Entry widgets in list
-            return int(entry_x.get_data()), int(entry_y.get_data())
+            return int(entry_x.get()), int(entry_y.get())
         else:
             return self.get_object_from_name(value, name)
 

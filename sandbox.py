@@ -5,6 +5,7 @@ import arcade
 from random import uniform
 from arcade.color import DARK_MOSS_GREEN
 from functools import partial
+from tkinter import StringVar
 
 from lords_manager import LordsManager
 from map_classes import *
@@ -136,9 +137,6 @@ class Application(arcade.Window):
         if (dragged := self.cursor_dragged) is not None and dragged.can_be_dragged:
             self.cursor_pointed.on_mouse_drag(x, y)
 
-    def on_key_press(self, symbol: int, modifiers: int):
-        self.switch_view(MENU_VIEW)
-
 
 class Sandbox(Singleton, arcade.View):
     """Main view displaying actual map."""
@@ -163,7 +161,10 @@ class Sandbox(Singleton, arcade.View):
         self.location_window: WindowContainer = self.create_window(Location)
         self.lord_window: WindowContainer = self.create_window(Nobleman)
 
-        self.testing_ideas()  # TODO: discard this before release
+        # searching by keyboard-input fields:
+        self.query_value = ''  # updated every time when key is pressed
+        self.query_type: Location or Nobleman = Location
+        self.query_result: List[Union[Location, Nobleman]] = []
 
         # to draw and update everything with one instruction in on_draw()
         # and on_update() methods:
@@ -327,6 +328,21 @@ class Sandbox(Singleton, arcade.View):
         window, fields, buttons = window_container.get_data()  # window_elements.values()
         if window not in spritelist:
             spritelist.extend([window] + fields + buttons)
+
+    def on_key_press(self, key: int, modifiers: int):
+        self.search_user_input(key)
+
+    def search_user_input(self, key: int):
+        self.query_value = query_value = update_string_with_pressed_key(key, self.query_value)
+        function = self.get_query_function()
+        self.query_result = input_match_search(query_value, function, self.query_result, key)
+        print(f'Found {len(self.query_result)} objects matching query: {query_value}')
+
+    def get_query_function(self):
+        if self.query_type is Nobleman:
+            return lambda: self.manager.lords
+        else:
+            return lambda: self.manager.locations
 
     def close_window(self, window: UiPanel):
         for child in window.children:
