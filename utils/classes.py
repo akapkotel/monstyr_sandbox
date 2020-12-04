@@ -211,7 +211,9 @@ class Location:
         self.description = ''
 
     def __repr__(self):
-        return f'{self.type.value} {self.name if self.name != self.type.value else ""}'
+        if self.name == self.type.value:
+            return self.type.value.title()
+        return f'{self.type.value.title()} {self.name}'
 
     @property
     def full_name(self):

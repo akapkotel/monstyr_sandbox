@@ -155,3 +155,8 @@ def filtered_slots_names(_object, ignore_fields: Tuple) -> List[str]:
 
 def slot_to_field(slot: str) -> str:
     return f"{slot.lstrip('_').replace('_', ' ').title()}:"
+
+
+def clamp(value, maximum, minimum) -> Union[int, float]:
+    """Guarantee that number will by larger than min and less than max."""
+    return max(minimum, min(value, maximum))

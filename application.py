@@ -261,16 +261,22 @@ class Application(tk.Tk):
         center_frame = Frame(section)
         top_center_frame = Frame(center_frame)
         self.details_button = TkButton(top_center_frame)
-        self.map_canvas = Canvas(top_center_frame, width=600, height=600, bg='white')
-        self.map_canvas.bind('<Enter>', self.map.on_mouse_enter)
-        self.map_canvas.bind('<Leave>', self.map.on_mouse_exit)
-        self.map_canvas.bind('<Motion>', self.map.mouse_motion)
-        self.map_canvas.bind('<Button-1>', self.map.on_left_click)
-        self.map_canvas.bind('<Button-3>', self.map.on_right_click)
+        self.map_canvas = self.create_map_canvas(top_center_frame)
         self.details_button.pack(side=TOP)
         self.map_canvas.pack(side=TOP)
         top_center_frame.pack(side=TOP)
         center_frame.pack(side=LEFT, expand=True, fill=BOTH)
+
+    def create_map_canvas(self, parent) -> Canvas:
+        canvas = Canvas(parent, width=600, height=600,
+                                 bg='white', borderwidth=2)
+        canvas.bind('<Enter>', self.map.on_mouse_enter)
+        canvas.bind('<Leave>', self.map.on_mouse_exit)
+        canvas.bind('<Motion>', self.map.on_mouse_motion)
+        canvas.bind('<B3-Motion>', self.map.on_mouse_drag)
+        canvas.bind('<Button-1>', self.map.on_left_click)
+        canvas.bind('<Button-3>', self.map.on_right_click)
+        return canvas
 
     def locations_searching_list(self, section):
         right_frame = Frame(section)
@@ -427,7 +433,6 @@ class Application(tk.Tk):
         or single Location, which allows to edit the data and save it.
         """
         window = tk.Toplevel()
-        window.geometry('625x900')
         window.title(instance.name)
         window.protocol("WM_DELETE_WINDOW",
                         partial(self.close_details_window, instance))
@@ -520,7 +525,7 @@ class Application(tk.Tk):
         variable = IntVar(value=attr)
         widget = Entry(container,
                        textvariable=variable,
-                       width=3 if name == 'age' else 6,
+                       width=len(str(attr)) + 2,
                        justify=CENTER)
         return variable, widget
 

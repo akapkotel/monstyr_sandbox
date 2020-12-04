@@ -5,8 +5,13 @@ from typing import Optional, List, Tuple
 
 from tkinter import EventType, Canvas, Tk
 
+from utils.enums import LocationType
 from utils.classes import Location
+from utils.functions import clamp
 from lords_manager.lords_manager import LordsManager
+
+
+NAME_ONLY = (LocationType.village, LocationType.town, LocationType.city)
 
 
 class Map:
@@ -17,7 +22,7 @@ class Map:
         self.locations: List[Location] = []
         self.width = width
         self.height = height
-        self.viewport = 0, 0, 600, 600  # TODO: update it with cursor-drag
+        self.viewport = [0, 0, 600, 600]
         self.cursor_position = None
         self.pointed_location: Optional[Location] = None
         self.update()
@@ -33,51 +38,63 @@ class Map:
     def draw_visible_map_locations(self):
         pointed = False
         self.pointed_location = None
-        for location in (l for l in self.manager.locations if self.visible(l)):
+        l, b, r, t = self.viewport
+        for location in self.manager.locations:
             x, y = location.position
+            if not (l < x < r and b < y < t):
+                continue
+
             if not pointed and self.cursor_position is not None:
-                cx, cy = self.cursor_position
-                color, pointed = self.check_if_pointing_at_location(x, y, cx, cy)
+                color, pointed = self.check_if_pointing_at_location(x, y, l, b)
                 if pointed:
                     self.pointed_location = location
             else:
                 color = 'grey'
-            self.draw_location(color, location, x, y)
-
-    def draw_location(self, color, location, x, y):
-        self.application.map_canvas.create_rectangle(
-            x - 5, y - 5, x + 5, y + 5, fill=color, outline='black',
-            tags='location'
-        )
-        text = location.name
-        self.application.map_canvas.create_text(x + 50, y, text=text,
-                                                fill='black', tags='location')
+            self.draw_location(color, location, x - l, y - b)
 
     def visible(self, location: Location):
         x, y = location.position
         l, b, r, t = self.viewport
         return l < x < r and b < y < t
 
-    @staticmethod
-    def check_if_pointing_at_location(x, y, cx, cy) -> Tuple[str, bool]:
+    def draw_location(self, color, location, x, y):
+        self.application.map_canvas.create_rectangle(
+            x - 5, y - 5, x + 5, y + 5, fill=color, outline='black',
+            tags='location'
+        )
+        text = location.name if location.type in NAME_ONLY else location.full_name
+        offset = 17 + len(text) * 3
+        self.application.map_canvas.create_text(x + offset, y, text=text, tags='location')
+        if location == self.pointed_location:
+            self.application.map_canvas.create_rectangle(
+                x - 10, y - 10, x + len(text) * 9, y + 10, outline='green', tags='location'
+            )
+
+    def check_if_pointing_at_location(self, x, y, vl, vb) -> Tuple[str, bool]:
+        cx, cy = self.cursor_position
         l, b, r, t = x - 5, y - 5, x + 5, y + 5
-        if l < cx < r and b < cy < t:
-            return 'lightgreen', True
+        if l < cx + vl < r and b < cy + vb < t:
+            return 'green', True
         else:
             return 'grey', False
 
     def on_left_click(self, event: EventType):
         print(f'Left click on map canvas at: {event.x, event.y}')
-        canvas: Canvas = event.widget
-        if self.pointed_location is not None:
-            print(f'Clicked at {self.pointed_location.full_name}')
+        if (location := self.pointed_location) is not None:
+            self.application.open_new_or_show_opened_window(location)
 
     def on_right_click(self, event: EventType):
         print(f'Right click on map canvas at: {event.x, event.y}')
         canvas: Canvas = event.widget
 
-    def mouse_motion(self, event: EventType):
+    def on_mouse_motion(self, event: EventType):
         canvas: Canvas = event.widget
+        self.cursor_position = event.x, event.y
+
+    def on_mouse_drag(self, event: EventType):
+        if self.cursor_position is not None:
+            x, y = self.cursor_position
+            self.update_viewport(x - event.x, y - event.y)
         self.cursor_position = event.x, event.y
 
     def on_mouse_exit(self, event: EventType):
@@ -88,5 +105,8 @@ class Map:
         print(f'Cursor entered canvas!')
         self.cursor_position = event.x, event.y
 
-    def highlight_pointed_location(self, pointed: Location):
-        print(f'Mouse pointing at: {pointed.name}')
+    def update_viewport(self, dx, dy):
+        l, b, r, t = self.viewport
+        l = clamp(l + dx, self.width - 600, 0)
+        b = clamp(b + dy, self.height - 600, 0)
+        self.viewport = l, b, r + 600, t + 600
