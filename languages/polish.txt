@@ -18,6 +18,7 @@ churches = kościoły
 hideouts = kryjówi
 castles = zamki
 military posts = stanice wojskowe
+fortress = forteca
 fortresses = fortece
 manufactures = manufaktury
 stables = hodowle

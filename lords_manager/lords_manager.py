@@ -1,9 +1,16 @@
 #!/usr/bin/env python
 
+import os
+
+
 from functools import lru_cache
-from random import random
-from typing import Tuple
-from classes import *
+from random import random, randint, choice
+from typing import Tuple, List, Set, Dict, Union
+from enums import (
+    Title, Sex, ChurchTitle, MilitaryRank, Faction, Nationality, LocationType
+)
+from utils.classes import Nobleman, Location
+
 
 LORDS_FIEFS = {  # title: (min fiefs, max fiefs)
     Title.client: (0, 0),
@@ -59,7 +66,8 @@ class LordsManager:
     @staticmethod
     def load_names(file_name: str) -> List[str]:
         """Load list of str names from txt file."""
-        with open(f'names/{file_name}', 'r') as file:
+        path_to_file = os.path.join(os.getcwd(), 'names', file_name)
+        with open(path_to_file, 'r') as file:
             names = file.readline().rstrip('\n').split(',')
         return sorted(names)
 
@@ -130,7 +138,8 @@ class LordsManager:
 
     def _save_data_to_db(self, convert_data: bool):
         import shelve
-        with shelve.open('noblemen.sdb', 'c') as file:
+        full_file_path = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
+        with shelve.open(full_file_path, 'c') as file:
             for lord in self.lords:
                 print(f'saving {lord}')
                 if convert_data:
@@ -156,14 +165,14 @@ class LordsManager:
         correct, since id's are not changing, when instances attributes are
         modified.
         """
-        if isinstance(instance, Nobleman):
+        if hasattr(instance, 'portrait'):
             return self.prepare_lord_for_save(instance)
         return self.prepare_location_to_save(instance)
 
     @staticmethod
     def prepare_lord_for_save(lord: Nobleman):
         if lord.spouse:
-            lord._spouse = lord.spouse.id
+            lord._spouse = lord.spouse if isinstance(lord.spouse, int) else lord.spouse.id
         if lord.liege:
             lord.liege = lord.liege.id
         for attr in ('_children', '_siblings', '_vassals', '_fiefs'):
@@ -182,12 +191,12 @@ class LordsManager:
         # Since we saved our instances with id's instead of the other objects
         # references, we need to get_data our references back, when loading our
         # instance:
-        if isinstance(instance, Nobleman):
-            self.convert_ids_to_noblemen(instance)
+        if hasattr(instance, 'portrait'):
+            return self.convert_ids_to_noblemen(instance)
         else:
-            self.convert_ids_to_locations(instance)
+            return self.convert_ids_to_locations(instance)
 
-    def convert_ids_to_noblemen(self, lord: Nobleman):
+    def convert_ids_to_noblemen(self, lord: Nobleman) -> Nobleman:
         if lord.spouse:
             lord._spouse = self.get_lord_of_id(lord.spouse)
         if lord.liege:
@@ -196,26 +205,26 @@ class LordsManager:
         lord._children = {self.get_lord_of_id(c) for c in lord.children}
         lord._siblings = {self.get_lord_of_id(s) for s in lord.siblings}
         lord._fiefs = {self.get_location_of_id(f) for f in lord.fiefs}
+        return lord
 
-    def convert_ids_to_locations(self, location: Location):
+    def convert_ids_to_locations(self, location: Location) -> Location:
         if location.owner:
             location.owner = self.get_lord_of_id(location.owner)
+        return location
 
     @staticmethod
-    def _load_data_from_db() -> Tuple[
-        Dict[int, Nobleman], Dict[int, Location]]:
+    def _load_data_from_db() -> Tuple[Dict[int, Nobleman], Dict[int, Location]]:
         import shelve
         lords: Dict[int, Nobleman] = {}
         locations: Dict[int, Location] = {}
-        with shelve.open('noblemen.sdb', 'r') as file:
+        path_to_file = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
+        with shelve.open(path_to_file, 'r') as file:
             for elem in file:
                 print(f'loading {file[elem].name}')
-                if isinstance(loaded := file[elem], Nobleman):
-                    lord = file[elem]
-                    lords[lord.id] = lord
+                if hasattr(instance := file[elem], 'portrait'):
+                    lords[instance.id] = instance
                 else:
-                    location = file[elem]
-                    locations[location.id] = location
+                    locations[instance.id] = instance
         print(f'Loaded {len(lords)} lords and {len(locations)} locations.')
         return lords, locations
 
@@ -276,8 +285,7 @@ class LordsManager:
         return set(noble for noble in self.lords if noble.faction is faction)
 
     def get_locations_of_type(self,
-                              locations_type: LocationType = None) -> Set[
-        Location]:
+                              locations_type: LocationType = None) -> Set[Location]:
         if locations_type is None:
             return set(self.locations)
         return set(loc for loc in self.locations if loc.type is locations_type)
@@ -301,6 +309,9 @@ class LordsManager:
             liege = self.get_lord_by_name(name=liege)
         return liege.vassals
 
+    def __iter__(self):
+        return (lord for lord in self.lords)
+
     def set_feudal_bond(self, lord: Nobleman, vassal: Nobleman):
         """
         Set lord as liege of vassal and add vassal to lord's vassals set. If
@@ -322,13 +333,10 @@ class LordsManager:
         collection.update(objects)
 
     def add(self, new_object: Union[Nobleman, Location]):
-        collection = self.collection(new_object)
-        collection.add(new_object)
-
-    def discard(self, discarded: Union[Nobleman, Location]):
-        collection = self.collection(discarded)
-        collection.discard(discarded)
-        self.discarded.add(discarded)
+        if hasattr(new_object, 'portrait'):
+            self._lords[new_object.id] = new_object
+        else:
+            self._locations[new_object.id] = new_object
 
     def collection(self,
                    obj: Union[Nobleman, Location]) -> Union[
@@ -343,7 +351,7 @@ class LordsManager:
     @staticmethod
     def clear_db():
         import shelve
-        with shelve.open('noblemen.sdb', 'c') as file:
+        with shelve.open('../noblemen.sdb', 'c') as file:
             file.clear()
 
     def save(self, create=False):

@@ -2,20 +2,21 @@
 
 import os
 
-from typing import Union, Tuple, List, Callable, Sized
+from typing import Union, Tuple, List, Callable
 from functools import wraps
 from tkinter import StringVar, Listbox, Event, END
 from arcade import Window
-from arcade.key import BACKSPACE, SPACE
+from arcade.key import BACKSPACE, SPACE, DELETE
 
 ENGLISH = 'english'
 POLISH = 'polish'
+EXTENSION = '.txt'
 
 LANGUAGES = {}
-LANG_DIR = 'languages/'
+LANG_DIR = os.path.join(os.getcwd(), 'languages')
 for lang_file in os.listdir(LANG_DIR):
-    lang_dict = LANGUAGES[lang_file.rstrip('.txt')] = {}
-    with open(LANG_DIR + lang_file, 'r') as file:
+    lang_dict = LANGUAGES[lang_file.rstrip(EXTENSION)] = {}
+    with open(os.path.join(LANG_DIR, lang_file), 'r') as file:
         for line in file.readlines():
             key, value = line.rstrip('\n').split(' = ')
             lang_dict[key] = value
@@ -55,7 +56,7 @@ def load_image_or_placeholder(filename: str):
     from tkinter import PhotoImage
     if os.path.exists(filename):
         return PhotoImage(file=filename)
-    return PhotoImage(file='no_image.png')
+    return PhotoImage(file=os.path.join(os.getcwd(), 'no_image.png'))
 
 
 def print_return(func):
@@ -72,12 +73,12 @@ def input_match_search(query_variable: Union[StringVar, str],
                        updated: Union[Listbox, List],
                        event: Union[Event, int]):
     """
-    Handle dynamic search called when user writes his query in tkinter
-    lords manager or in arcade map application. There are two cases
-    with different types of parameters passed to this function. Both of them
-    are handled in two steps: (1) updating value of virtual variable which
-    stores current query with the last user-pressed key, and then (2)
-    updating the list of elements of searched collection to match the query.
+    Handle dynamic search called when user writes his query in tkinter lords
+    manager or in arcade map application. There are two cases with different
+    types of parameters passed to this function. Both of them are handled in
+    two steps: (1) updating value of virtual variable which stores current
+    query with the last user-pressed key, and then (2) updating the list of
+    elements of searched collection to match the query.
     """
     if isinstance(query_variable, StringVar):
         query = update_tk_stringvar(event, query_variable)
@@ -135,8 +136,9 @@ def open_if_not_opened(func, window, spritelist):
 
 
 def get_current_language():
-    with open('config.txt', 'r') as config:
-        language = config.readline().rstrip('\n')
+    path_to_file = os.path.join(os.getcwd(), 'config.txt')
+    with open(path_to_file, 'r') as config:
+        language = config.readline().rstrip('\n').split('=')[1]
     return language
 
 

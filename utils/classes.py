@@ -86,6 +86,14 @@ class Nobleman:
             if self.age - child.age > 12:
                 self._children.add(child)
 
+    def add_children(self, *children):
+        for child in children:
+            self.add_child(child)
+
+    def add_child(self, child: Nobleman):
+        if self.age - child.age > 12:
+            self._children.add(child)
+
     @property
     def vassals(self) -> Set[Union[Nobleman, int]]:
         return self._vassals
@@ -219,9 +227,9 @@ class Location:
 
     @staticmethod
     def get_proper_map_icon(location: Location):
-        preferred_map_icon_name = f'map_icons/{location.name}.png'
-        if os.path.exists(preferred_map_icon_name):
-            return preferred_map_icon_name
+        map_icon_name = os.path.join('map_icons', location.name) + '.png'
+        if os.path.exists(map_icon_name):
+            return map_icon_name
         return f'{location.type.value}_{randint(1, 4)}.png'
 
 

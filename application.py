@@ -1,24 +1,34 @@
 #!/usr/bin/env python
 
 import os
+
 import string
 import shelve
 import tkinter as tk
 import tkinter.filedialog as fd
 
+from random import choice
 from dbm import error
 from functools import partial
-from typing import Any, Iterable, Tuple, Callable, Generator
+from typing import (
+    Any, Iterable, Tuple, Callable, Generator, Dict, Set, List, Union, Optional
+)
 from tkinter import (
     DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, CENTER, END, IntVar,
     StringVar, Label, Entry, Spinbox, Listbox, Frame, LabelFrame, ACTIVE,
     SUNKEN, Button as TkButton
 )
-from functions import (load_image_or_placeholder, plural, localize,
-    input_match_search, get_current_language, slot_to_text
+from utils.functions import (
+    load_image_or_placeholder, plural, localize,
+    input_match_search, get_current_language, slot_to_field
 )
-from classes import *
-from lords_manager import LordsManager
+from enums import (
+    MyEnum, Sex, Nationality, Title, LocationType, Faction
+)
+from utils.classes import Nobleman, Location, Counter
+from lords_manager.lords_manager import LordsManager
+from map.map import Map
+
 
 WINDOW_TITLE = 'Lords Manager'
 LORDS_SETS = ('_children', '_vassals', '_spouse', '_siblings', 'liege')
@@ -70,7 +80,8 @@ class Application(tk.Tk):
         self.wm_title(WINDOW_TITLE)
 
         self.language = language
-        self.manager = LordsManager()
+        self.manager = manager = LordsManager()
+        self.map = Map(manager=manager, width=10000, height=10000)
         self.sections: Dict[str, tk.LabelFrame]
 
         # --- Variables ---
@@ -99,10 +110,10 @@ class Application(tk.Tk):
         # Handles to retrieve additional TopLevel windows opened by user. We
         # keep two dicts of windows for Noblemen and Location instances,
         # and each window is identified by it's instance id integer key:
-        self.extra_windows = {Nobleman: {}, Location: {}}
+        self.extra_windows = {'Nobleman': {}, 'Location': {}}
         # ---- Sections of the Window ----
         sections_names = ['Lords in numbers:', 'Locations in numbers:',
-                          'Actions:', 'Lords and fiefs:']
+                          'Actions:', 'Lords and fiefs:', 'map']
         self.sections = {
             name: LabelFrame(self,
                              text=name,
@@ -221,9 +232,9 @@ class Application(tk.Tk):
 
     def create_lords_and_fiefs_section(self):
         """
-        In this section two lists re displayed: Lords on the left and Locations on the right
-        side of the window. In the middle a picture of currently selected object and button
-        opening detail-view is displayed.
+        In this section two lists re displayed: Lords on the left and Locations
+        on the right side of the window. In the middle a picture of currently
+        selected object and button opening detail-view is displayed.
         """
         section = self.sections['Lords and fiefs:']
         self.lords_searching_list(section)
@@ -254,9 +265,12 @@ class Application(tk.Tk):
         center_frame = Frame(section)
         top_center_frame = Frame(center_frame)
         self.details_button = TkButton(top_center_frame)
-        self.selected_image = Label(top_center_frame)
+        self.map_canvas = tk.Canvas(top_center_frame, width=600, height=600,
+                                    bg='white')
+        self.map_canvas.bind('<Button-1>', self.map.add_location)
+        self.map_canvas.bind('<Motion>', self.map.mouse_over)
         self.details_button.pack(side=TOP)
-        self.selected_image.pack(side=TOP)
+        self.map_canvas.pack(side=TOP, fill="both", expand="true")
         top_center_frame.pack(side=TOP)
         center_frame.pack(side=LEFT, expand=True, fill=BOTH)
 
@@ -381,22 +395,21 @@ class Application(tk.Tk):
     @staticmethod
     def get_instance_name(event: tk.Event) -> str:
         if isinstance(widget := event.widget, Listbox):
-            name = widget.get_data(ACTIVE)
+            name = widget.get(ACTIVE)
         else:  # Entry widget
-            name = widget.get_data()
+            name = widget.get()
         return name
 
     def open_new_or_show_opened_window(self, instance):
         if window := self.window_for_instance_already_opened(instance):
             window.lift()
         else:
-            self.manager.convert_ids_to_instances(instance)
+            instance = self.manager.convert_ids_to_instances(instance)
             self.details_window(instance)
 
-    def window_for_instance_already_opened(self, instance) -> Optional[
-        tk.Toplevel]:
+    def window_for_instance_already_opened(self, instance) -> Optional[tk.Toplevel]:
         try:
-            return self.extra_windows[type(instance)][instance.id]
+            return self.extra_windows[instance.__class__.__name__][instance.id]
         except KeyError:
             return
 
@@ -441,8 +454,7 @@ class Application(tk.Tk):
             data.append((name, attr, variable, widget))  # step 1
 
         AuthButton(window, text=f'Save {instance.__class__.__name__}',
-                   command=lambda: self.save_instance(instance, data)).pack(
-            side=TOP)  # step 2
+                   command=lambda: self.save_instance(instance, data)).pack(side=TOP)  # step 2
 
     def register_extra_window(self,
                               instance: Union[Nobleman, Location],
@@ -451,11 +463,11 @@ class Application(tk.Tk):
         Add new window reference to the self.extra_windows nested dict to allow
         keeping track of opened additional windows, update their contents etc.
         """
-        self.extra_windows[instance.__class__][instance.id] = window
+        self.extra_windows[instance.__class__.__name__][instance.id] = window
 
     def unregister_extra_window(self, instance: Union[Nobleman, Location]):
-        self.extra_windows[instance.__class__][instance.id].destroy()
-        del self.extra_windows[instance.__class__][instance.id]
+        self.extra_windows[instance.__class__.__name__][instance.id].destroy()
+        del self.extra_windows[instance.__class__.__name__][instance.id]
 
     def close_details_window(self, instance: Union[Nobleman, Location]):
         """
@@ -467,7 +479,7 @@ class Application(tk.Tk):
 
     @staticmethod
     def generate_label(container, name) -> Label:
-        label_text = slot_to_text(name)
+        label_text = slot_to_field(name)
         return Label(container, text=label_text, bd=1, anchor='w',
                      width=15).pack(side=LEFT, fill=BOTH, expand=False)
 
@@ -648,7 +660,7 @@ class Application(tk.Tk):
             self.save_single_attribute(instance, tuple_)
         self.close_details_window(instance)
         self.manager.add(instance)
-        self.manager.save()  # TODO: uncomment when app is ready
+        self.manager.save()
         self.refresh_windows()
 
     def refresh_windows(self):
@@ -656,9 +668,8 @@ class Application(tk.Tk):
         When object data in one extra-window is changed and saved, update
         data in all other extra-windows currently opened.
         """
-        print(self.extra_windows)
         for window_class, windows in self.extra_windows.items():
-            obj = 'lord' if window_class is Nobleman else 'location'
+            obj = 'lord' if window_class == 'Nobleman' else 'location'
             func = eval(f'self.manager.get_{obj}_of_id')
             for id, window in windows.items():
                 instance = func(id)
@@ -676,7 +687,7 @@ class Application(tk.Tk):
                               tuple_: Tuple):
         name, attribute, variable, widget = tuple_
         if name in ('portrait', 'image'):
-            value = variable.get_data()
+            value = variable.get()
         else:
             value = self.convert_data_to_attribute(name, attribute, widget)
         setattr(instance, name, value)
@@ -689,6 +700,8 @@ class Application(tk.Tk):
             return self.cast_value_to_set(name, value)
         elif isinstance(attribute, int):
             return int(value)
+        elif name in LORDS_SETS or name == '_fiefs':
+            return self.get_object_from_name(value, name)
         elif isinstance(attribute, str):
             return value
         elif isinstance(attribute, Tuple):

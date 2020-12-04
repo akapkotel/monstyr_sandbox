@@ -53,10 +53,11 @@ and comments inside lords_manager.py. In the future there will be a
 documentation available.
 
 ### Status
-In developement.
+In development.
 
 ### To be done:
 1. Documentation
 2. Add tests
 3. Finish map application.
 4. Create single-file executables for linux and windows.
+5. Migrate map from arcade to tkinter using canvas to draw locations.
