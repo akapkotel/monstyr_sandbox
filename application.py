@@ -30,6 +30,16 @@ WINDOW_TITLE = 'Lords Manager'
 LORDS_SETS = ('_children', '_vassals', '_spouse', '_siblings', 'liege')
 
 
+def show_error_message(title: str, message: str):
+    popup = tk.Toplevel(width=400)
+    popup.title(title)
+    tk.Message(popup, text=message,
+               width=200).pack(fill=BOTH, expand=True)
+    TkButton(popup, text='Close', command=popup.destroy).pack(
+        side=BOTTOM)
+    popup.attributes('-topmost', True)
+
+
 def pack_widget(widget, **kwargs):
     """Pack widgets and nested widgets recursively."""
     try:
@@ -188,8 +198,9 @@ class Application(tk.Tk):
         section = self.sections['Locations in numbers:']
         column, row = Counter(), Counter()
         # first row:
-        Label(section, text='Locations total:').grid(column=column.next(),
-                                                     row=row.next())
+        label = Label(section, text='Locations total:')
+        label.grid(column=column.next(), row=row.next())
+        label.bind('<Button-1>', partial(self.change_locations_filter, None))
         self.locations_counter = Entry(
             section, textvariable=self.locations_count, width=4,
             disabledbackground='white',
@@ -269,13 +280,15 @@ class Application(tk.Tk):
 
     def create_map_canvas(self, parent) -> Canvas:
         canvas = Canvas(parent, width=600, height=600,
-                                 bg='white', borderwidth=2)
+                                 bg='DarkOliveGreen3', borderwidth=2, relief=SUNKEN)
         canvas.bind('<Enter>', self.map.on_mouse_enter)
         canvas.bind('<Leave>', self.map.on_mouse_exit)
         canvas.bind('<Motion>', self.map.on_mouse_motion)
         canvas.bind('<B3-Motion>', self.map.on_mouse_drag)
         canvas.bind('<Button-1>', self.map.on_left_click)
         canvas.bind('<Button-3>', self.map.on_right_click)
+        canvas.bind('<Button-4>', self.map.on_mouse_scroll)
+        canvas.bind('<Button-5>', self.map.on_mouse_scroll)
         return canvas
 
     def locations_searching_list(self, section):
@@ -344,8 +357,12 @@ class Application(tk.Tk):
             self.lords_list.insert(END, lord.title_and_name)
 
     def change_locations_filter(self, criteria: MyEnum, event: tk.Event):
-        if isinstance(criteria, LocationType):
-            self.locations_filter = criteria
+        if criteria is None:
+            text = localize('All locations', self.language)
+        else:
+            text = f'{plural(criteria.value, self.language)}:'
+        self.locations_list_title.set(value=text.title())
+        self.locations_filter = criteria
         self.update_locations_list()
 
     def update_locations_list(self):
@@ -359,13 +376,8 @@ class Application(tk.Tk):
         try:
             self.manager.load()
         except error:
-            popup = tk.Toplevel(width=400)
-            popup.title('Initialization error!')
-            tk.Message(popup, text='File lords.sdb was not found!',
-                       width=200).pack(fill=BOTH, expand=True)
-            TkButton(popup, text='Close', command=popup.destroy).pack(
-                side=BOTTOM)
-            popup.attributes('-topmost', True)
+            show_error_message(title='Initialization error!',
+                               message='File lords.sdb was not found!')
         else:
             self.update_widgets_values()
 
@@ -418,13 +430,12 @@ class Application(tk.Tk):
         except KeyError:
             return
 
-    def new_instance_and_window(self, object_type: Union[
-        type(Nobleman), type(Location)]):
+    def new_instance_and_window(self, object_type: Union[type(Nobleman), type(Location)]):
         if object_type is Nobleman:
-            instance = Nobleman(len(self.manager.lords), 'ADD NAME',
+            instance = Nobleman(len(self.manager.lords) + 1, 'ADD NAME',
                                 nationality=Nationality.choice())
         else:
-            instance = Location(len(self.manager.locations), 'ADD NAME')
+            instance = Location(len(self.manager.locations) + 1, 'ADD NAME')
         self.details_window(instance)
 
     def details_window(self, instance: Union[Nobleman, Location]):
@@ -513,7 +524,8 @@ class Application(tk.Tk):
     def widget_from_string_attribute(attr: str, container, name):
         variable = StringVar(value=attr)
         if name in ('portrait', 'image', 'picture'):
-            photo = load_image_or_placeholder(attr)
+            path = os.path.join(os.getcwd(), name + 's', attr)
+            photo = load_image_or_placeholder(path)
             widget = Label(container, image=photo, relief=SUNKEN)
             widget.photo = photo
         else:
@@ -654,7 +666,8 @@ class Application(tk.Tk):
     def change_widget_image(widget: Label, variable: StringVar):
         filename = fd.askopenfile(title=f'Select image', mode='r')
         photo = load_image_or_placeholder(filename.name)
-        variable.set(filename.name)
+        name = filename.name.rsplit('/', 1)[1]
+        variable.set(name)
         widget.configure(image=photo)
         widget.photo = photo
 
@@ -692,7 +705,7 @@ class Application(tk.Tk):
                               instance: Union[Nobleman, Location],
                               tuple_: Tuple):
         name, attribute, variable, widget = tuple_
-        if name in ('portrait', 'image'):
+        if name in ('portrait', 'image', 'picture'):
             value = variable.get()
         else:
             value = self.convert_data_to_attribute(name, attribute, widget)

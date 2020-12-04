@@ -51,9 +51,8 @@ def get_screen_size() -> Tuple[int, int]:
 
 
 def load_image_or_placeholder(filename: str):
-    import os
     from tkinter import PhotoImage
-    if os.path.exists(filename):
+    if os.path.isfile(filename):
         return PhotoImage(file=filename)
     return PhotoImage(file='no_image.png')
 

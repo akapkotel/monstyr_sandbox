@@ -325,8 +325,10 @@ class LordsManager:
         collection.update(objects)
 
     def add(self, new_object: Union[Nobleman, Location]):
-        collection = self.collection(new_object)
-        collection.add(new_object)
+        if isinstance(new_object, Location):
+            self._locations[new_object.id] = new_object
+        else:
+            self._lords[new_object.id] = new_object
 
     def discard(self, discarded: Union[Nobleman, Location]):
         collection = self.collection(discarded)
