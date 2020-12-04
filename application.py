@@ -7,18 +7,24 @@ import tkinter as tk
 import tkinter.filedialog as fd
 
 from dbm import error
+from typing import Dict, Set, List, Optional, Union
+from random import choice
 from functools import partial
 from typing import Any, Iterable, Tuple, Callable, Generator
 from tkinter import (
     DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, CENTER, END, IntVar,
     StringVar, Label, Entry, Spinbox, Listbox, Frame, LabelFrame, ACTIVE,
-    SUNKEN, Button as TkButton
+    SUNKEN, Canvas, Button as TkButton
 )
-from functions import (load_image_or_placeholder, plural, localize,
+from utils.enums import (
+    MyEnum, Title, Sex, Nationality, Faction, LocationType
+)
+from utils.functions import (load_image_or_placeholder, plural, localize,
     input_match_search, get_current_language, slot_to_field
 )
-from classes import *
-from lords_manager import LordsManager
+from utils.classes import Nobleman, Location, Counter
+from lords_manager.lords_manager import LordsManager
+from map.map import Map
 
 WINDOW_TITLE = 'Lords Manager'
 LORDS_SETS = ('_children', '_vassals', '_spouse', '_siblings', 'liege')
@@ -71,6 +77,7 @@ class Application(tk.Tk):
 
         self.language = language
         self.manager = LordsManager()
+        self.map = Map(application=self, width=10000, height=10000)
         self.sections: Dict[str, tk.LabelFrame]
 
         # --- Variables ---
@@ -254,9 +261,14 @@ class Application(tk.Tk):
         center_frame = Frame(section)
         top_center_frame = Frame(center_frame)
         self.details_button = TkButton(top_center_frame)
-        self.selected_image = Label(top_center_frame)
+        self.map_canvas = Canvas(top_center_frame, width=600, height=600, bg='white')
+        self.map_canvas.bind('<Enter>', self.map.on_mouse_enter)
+        self.map_canvas.bind('<Leave>', self.map.on_mouse_exit)
+        self.map_canvas.bind('<Motion>', self.map.mouse_motion)
+        self.map_canvas.bind('<Button-1>', self.map.on_left_click)
+        self.map_canvas.bind('<Button-3>', self.map.on_right_click)
         self.details_button.pack(side=TOP)
-        self.selected_image.pack(side=TOP)
+        self.map_canvas.pack(side=TOP)
         top_center_frame.pack(side=TOP)
         center_frame.pack(side=LEFT, expand=True, fill=BOTH)
 

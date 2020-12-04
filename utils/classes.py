@@ -5,7 +5,7 @@ import os
 
 from random import randint
 from typing import List, Set, Dict, Union, Optional
-from enums import *
+from utils.enums import *
 
 
 class Nobleman:
