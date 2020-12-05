@@ -14,7 +14,7 @@ from typing import Any, Iterable, Tuple, Callable, Generator
 from tkinter import (
     DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, CENTER, END, IntVar,
     StringVar, Label, Entry, Spinbox, Listbox, Frame, LabelFrame, ACTIVE,
-    SUNKEN, Canvas, Button as TkButton
+    SUNKEN, Canvas, EventType, Toplevel, Button as TkButton
 )
 from utils.enums import (
     MyEnum, Title, Sex, Nationality, Faction, LocationType
@@ -28,10 +28,12 @@ from map.map import Map
 
 WINDOW_TITLE = 'Lords Manager'
 LORDS_SETS = ('_children', '_vassals', '_spouse', '_siblings', 'liege')
+MAP_WIDTH = 10000
+MAP_HEIGHT = 12000
 
 
 def show_error_message(title: str, message: str):
-    popup = tk.Toplevel(width=400)
+    popup = Toplevel(width=400)
     popup.title(title)
     tk.Message(popup, text=message,
                width=200).pack(fill=BOTH, expand=True)
@@ -87,7 +89,7 @@ class Application(tk.Tk):
 
         self.language = language
         self.manager = LordsManager()
-        self.map = Map(application=self, width=10000, height=10000)
+        self.map = Map(application=self, width=MAP_WIDTH, height=MAP_HEIGHT)
         self.sections: Dict[str, tk.LabelFrame]
 
         # --- Variables ---
@@ -257,9 +259,8 @@ class Application(tk.Tk):
         self.lords_list = Listbox(left_frame, height=20, width=35,
                                   selectmode=tk.SINGLE)
         self.lords_list.bind('<Button-1>',
-                             partial(self.configure_detail_button,
-                                     'Lord details',
-                                     self.lords_details))
+                             partial(self.configure_detail_buttons,
+                                     'Lord details'))
         self.lords_search_entry.bind(
             '<Key>', partial(input_match_search, variable,
                              lambda: self.manager.lords, self.lords_list))
@@ -271,25 +272,17 @@ class Application(tk.Tk):
     def details_section(self, section):
         center_frame = Frame(section)
         top_center_frame = Frame(center_frame)
-        self.details_button = TkButton(top_center_frame)
-        self.map_canvas = self.create_map_canvas(top_center_frame)
+        buttons_frame = Frame(top_center_frame)
+        self.details_button = TkButton(buttons_frame)
+        self.show_on_map_button = TkButton(buttons_frame, text='Show on map')
+        self.show_on_map_button.configure(state=DISABLED)
+        self.map_canvas = self.map.create_map_canvas(top_center_frame)
         self.details_button.pack(side=TOP)
+        self.show_on_map_button.pack(side=TOP)
+        buttons_frame.pack(side=TOP, expand=True, fill=BOTH)
         self.map_canvas.pack(side=TOP)
         top_center_frame.pack(side=TOP)
         center_frame.pack(side=LEFT, expand=True, fill=BOTH)
-
-    def create_map_canvas(self, parent) -> Canvas:
-        canvas = Canvas(parent, width=600, height=600,
-                                 bg='DarkOliveGreen3', borderwidth=2, relief=SUNKEN)
-        canvas.bind('<Enter>', self.map.on_mouse_enter)
-        canvas.bind('<Leave>', self.map.on_mouse_exit)
-        canvas.bind('<Motion>', self.map.on_mouse_motion)
-        canvas.bind('<B3-Motion>', self.map.on_mouse_drag)
-        canvas.bind('<Button-1>', self.map.on_left_click)
-        canvas.bind('<Button-3>', self.map.on_right_click)
-        canvas.bind('<Button-4>', self.map.on_mouse_scroll)
-        canvas.bind('<Button-5>', self.map.on_mouse_scroll)
-        return canvas
 
     def locations_searching_list(self, section):
         right_frame = Frame(section)
@@ -299,9 +292,9 @@ class Application(tk.Tk):
         self.locations_search_entry = Entry(right_frame, textvariable=variable)
         self.locations_list = Listbox(right_frame, height=20, width=35,
                                       selectmode=tk.SINGLE)
-        args = 'Location details', self.location_details
+        text = 'Location details'
         self.locations_list.bind(
-            '<Button-1>', partial(self.configure_detail_button, *args))
+            '<Button-1>', partial(self.configure_detail_buttons, text))
         self.locations_search_entry.bind(
             '<Key>', partial(input_match_search, variable,
                              lambda: self.manager.locations,
@@ -388,33 +381,36 @@ class Application(tk.Tk):
     def sdb_file_exists() -> str:
         return NORMAL if os.path.exists('noblemen.sdb') else DISABLED
 
-    def configure_detail_button(self, text: str, function: Callable,
-                                event: tk.Event):
+    def configure_detail_buttons(self, text: str, event: EventType):
         """
-        Set the correct callback for the detail_button according to the curently
-        active Listbox in main window. Button could open Nobleman-editing window
-        or Location-editing window.
+        Set the correct callback for the detail_button according to the
+        currently active Listbox in main window. Button could open
+        Nobleman-editing window or Location-editing window.
         """
-        self.details_button.configure(text=text,
-                                      command=partial(function, event))
+        instance = self.get_event_instance(event)
+        function = partial(self.open_new_or_show_opened_window, instance)
+        self.details_button.configure(text=text, command=function)
+        function = partial(self.map.move_to_position, instance)
+        self.show_on_map_button.configure(state=NORMAL, command=function)
 
-    def lords_details(self, event: tk.Event):
+    def get_event_instance(self, event: EventType) -> Union[Nobleman, Location]:
         name = self.get_instance_name(event)
-        instance = self.manager.get_lord_by_name(name)
-        self.open_new_or_show_opened_window(instance)
-
-    def location_details(self, event: tk.Event):
-        name = self.get_instance_name(event)
-        instance = self.manager.get_location_by_name(name)
-        self.open_new_or_show_opened_window(instance)
+        try:
+            return self.manager.get_lord_by_name(name)
+        except StopIteration:
+            return self.manager.get_location_by_name(name)
 
     @staticmethod
-    def get_instance_name(event: tk.Event) -> str:
+    def get_instance_name(event: EventType) -> str:
         if isinstance(widget := event.widget, Listbox):
             name = widget.get(ACTIVE)
         else:  # Entry widget
             name = widget.get()
         return name
+
+    def show_clicked_details(self, event: EventType):
+        instance = self.get_event_instance(event)
+        self.open_new_or_show_opened_window(instance)
 
     def open_new_or_show_opened_window(self, instance):
         if window := self.window_for_instance_already_opened(instance):
@@ -456,10 +452,10 @@ class Application(tk.Tk):
         # filled in step [1] and passed in step [2] to save method when user
         # clicks 'Save ...':
         data: List[Tuple] = []
-        no_widgets = ('id', 'map_icon')
+        no_widgets = ('id', 'map_icon', 'roads_to')
         for name in (n for n in instance.__slots__ if n not in no_widgets):
             attr = getattr(instance, name)
-            container = tk.Frame(window, relief=tk.GROOVE, borderwidth=1)
+            container = tk.Frame(window)
             label = self.generate_label(container, name)
             variable, widget = self.generate_data_widget(attr, container, name)
             action = self.generate_action_widget(container, instance, name,
@@ -490,7 +486,7 @@ class Application(tk.Tk):
         Close window and converts edited data to lightweight formats to make
         saved database shelve file small and quick-open-able.
         """
-        self.manager.prepare_for_save(instance)
+        self.manager.prepare_to_save(instance)
         self.unregister_extra_window(instance)
 
     @staticmethod
@@ -504,7 +500,7 @@ class Application(tk.Tk):
                              container: Frame,
                              name: str) -> Tuple:
         data = attr, container
-        if isinstance(attr, str):
+        if isinstance(attr, str) and name != 'owner':
             variable, widget = self.widget_from_string_attribute(*data, name)
         elif isinstance(attr, int):
             variable, widget = self.widget_from_int_attribute(*data, name)
@@ -552,7 +548,7 @@ class Application(tk.Tk):
     def widget_from_set_attribute(self, attr, container, name: str):
         variable = [e.name for e in attr]
         widget = Listbox(container, height=3, width=35,selectmode=tk.SINGLE)
-        func = self.lords_details if name in LORDS_SETS else self.location_details
+        func = self.show_clicked_details #if name in LORDS_SETS else self.location_details
         widget.bind('<Double-Button-1>', func)
         for item in attr:
             widget.insert(END, item.name)
@@ -576,9 +572,10 @@ class Application(tk.Tk):
         return variable, widget
 
     def widget_from_instance_or_none(self, attr, container):
-        variable = StringVar(value='' if attr is None else attr.name)
+        variable = StringVar(value='' if not attr else attr.name)
         widget = Entry(container, textvariable=variable, width=35)
-        widget.bind('<Double-Button-1>', self.lords_details)
+        if attr:
+            widget.bind('<Double-Button-1>', self.show_clicked_details)
         return variable, widget
 
     def generate_action_widget(self, container, instance, name, variable,

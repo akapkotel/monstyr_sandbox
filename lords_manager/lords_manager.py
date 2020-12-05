@@ -138,24 +138,20 @@ class LordsManager:
         import shelve
         full_path_name = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
         with shelve.open(full_path_name, 'c') as file:
-            for lord in self.lords:
+            for lord in (l for l in self.lords if l not in self.discarded):
                 print(f'saving {lord}')
                 if convert_data:
-                    file[f'lord: {lord.id}'] = self.prepare_lord_for_save(lord)
+                    file[f'lord: {lord.id}'] = lord.prepare_to_save(self)
                 else:
                     file[f'lord: {lord.id}'] = lord
-            for location in self.locations:
+            for location in (l for l in self.locations if l not in self.discarded):
                 print(f'saving {location}')
                 file[f'location: {location.id}'] = location
-            for discarded in self.discarded:
-                print(f'deleting {discarded.name}')
-                del file[discarded.name]
         print(
             f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
 
-    def prepare_for_save(self,
-                         instance: Union[Nobleman, Location]) -> Union[
-        Nobleman, Location]:
+    def prepare_to_save(self,
+                        instance: Union[Nobleman, Location]) -> Union[Nobleman, Location]:
         """
         When saving instances of Nobleman and location replace their
         references to other instances with these instances id's. It helps
@@ -163,27 +159,7 @@ class LordsManager:
         correct, since id's are not changing, when instances attributes are
         modified.
         """
-        if isinstance(instance, Nobleman):
-            return self.prepare_lord_for_save(instance)
-        return self.prepare_location_to_save(instance)
-
-    @staticmethod
-    def prepare_lord_for_save(lord: Nobleman):
-        if lord.spouse:
-            lord._spouse = lord.spouse.id
-        if lord.liege:
-            lord.liege = lord.liege.id
-        for attr in ('_children', '_siblings', '_vassals', '_fiefs'):
-            setattr(lord, attr, {elem.id for elem in getattr(lord, attr)})
-        return lord
-
-    @staticmethod
-    def prepare_location_to_save(location: Location) -> Location:
-        if location.type.value not in location.map_icon:
-            location.map_icon = Location.get_proper_map_icon(location)
-        if location.owner:
-            location.owner = location.owner.id
-        return location
+        return instance.prepare_to_save(manager=self)
 
     def convert_ids_to_instances(self, instance: Union[Nobleman, Location]):
         # Since we saved our instances with id's instead of the other objects

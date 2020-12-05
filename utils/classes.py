@@ -44,7 +44,7 @@ class Nobleman:
         self.military_rank = military_rank
         self.liege: Optional[Union[Nobleman, int]] = liege
         self._vassals: Set[Union[Nobleman, int]] = set()
-        self._fiefs: Set[Union[Nobleman, int]] = set()
+        self._fiefs: Set[Union[Location, int]] = set()
         self.info: List[str] = []
 
     def __repr__(self):
@@ -106,9 +106,9 @@ class Nobleman:
     def fiefs(self) -> Set[Union[Location, int]]:
         return self._fiefs
 
-    def add_fiefs(self, *fiefs: Union[Location, int]):
-        self._fiefs.update(fiefs)
-        for fief in fiefs:
+    def add_fief(self, fief: Union[Location, int]):
+        self._fiefs.add(fief)
+        if isinstance(fief, Location):
             fief.owner = self
 
     @fiefs.deleter
@@ -182,11 +182,24 @@ class Nobleman:
     def hierarchy(self) -> Dict:
         return self.title.hierarchy()
 
+    def prepare_to_save(self, manager):
+        if self.spouse:
+            self._spouse = self.spouse.id
+        if self.liege:
+            self.liege = self.liege.id
+        for attr in ('_children', '_siblings', '_vassals', '_fiefs'):
+            try:
+                setattr(self, attr, {elem.id for elem in getattr(self, attr)})
+            except AttributeError:
+                pass
+        return self
+
 
 class Location:
 
     __slots__ = ['id', 'map_icon', 'name', 'picture', 'position', 'type',
-                 'owner', 'faction', 'population', 'soldiers', 'description']
+                 'owner', 'faction', 'population', 'soldiers', 'description',
+                 'roads_to']
 
     def __init__(self,
                  id: int,
@@ -202,13 +215,17 @@ class Location:
         self.picture = picture
         self.name = name or location_type.value
         self.type = location_type
-        self.map_icon = self.get_proper_map_icon(self)
+        self.map_icon = self.get_proper_picture(self)
         self.position = position
         self.owner = owner
         self.faction = Faction.neutral if owner is None else owner.faction
         self.population = population
         self.soldiers = soldiers
         self.description = ''
+        self.roads_to = set()
+
+        if owner is not None:
+            owner.add_fief(self)
 
     def __repr__(self):
         if self.name == self.type.value:
@@ -220,11 +237,21 @@ class Location:
         return self.__repr__()
 
     @staticmethod
-    def get_proper_map_icon(location: Location):
-        preferred_map_icon_name = f'map_icons/{location.name}.png'
-        if os.path.exists(preferred_map_icon_name):
-            return preferred_map_icon_name
+    def get_proper_picture(location: Location) -> str:
+        preferred = os.path.join(os.getcwd(), 'pictures', f'{location.name}.png')
+        if os.path.isfile(preferred):
+            return preferred
         return f'{location.type.value}_{randint(1, 4)}.png'
+
+    def prepare_to_save(self, manager) -> Location:
+        if self.type.value not in self.picture:
+            self.picture = Location.get_proper_picture(self)
+        if isinstance(self.owner, str):
+            self.owner = manager.get_lord_by_name(self.owner)
+        if self.owner:
+            self.owner.add_fief(self.id)
+            self.owner = self.owner.id
+        return self
 
 
 class Counter:
