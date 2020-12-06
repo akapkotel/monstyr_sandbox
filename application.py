@@ -232,7 +232,9 @@ class Application(tk.Tk):
                    state=self.sdb_file_exists()).pack(side=LEFT)
 
         TkButton(section, command=self.load_data, text='Reload data',
-                 state=self.sdb_file_exists()).pack(side=LEFT, padx=380)
+                 state=self.sdb_file_exists()).pack(side=LEFT, padx=190)
+        TkButton(section, command=self.save_lords, text='Save data',
+                 state=self.sdb_file_exists()).pack(side=LEFT, padx=190)
 
         AuthButton(section,
                    command=partial(self.new_instance_and_window, Location),
@@ -256,7 +258,7 @@ class Application(tk.Tk):
                                  textvariable=self.lords_list_title)
         variable = StringVar()
         self.lords_search_entry = Entry(left_frame, textvariable=variable)
-        self.lords_list = Listbox(left_frame, height=20, width=35,
+        self.lords_list = Listbox(left_frame, height=30, width=35,
                                   selectmode=tk.SINGLE)
         self.lords_list.bind('<Button-1>',
                              partial(self.configure_detail_buttons,
@@ -290,7 +292,7 @@ class Application(tk.Tk):
                                      textvariable=self.locations_list_title)
         variable = StringVar()
         self.locations_search_entry = Entry(right_frame, textvariable=variable)
-        self.locations_list = Listbox(right_frame, height=20, width=35,
+        self.locations_list = Listbox(right_frame, height=30, width=35,
                                       selectmode=tk.SINGLE)
         text = 'Location details'
         self.locations_list.bind(
@@ -379,7 +381,7 @@ class Application(tk.Tk):
 
     @staticmethod
     def sdb_file_exists() -> str:
-        return NORMAL if os.path.exists('noblemen.sdb') else DISABLED
+        return NORMAL if os.path.exists('lords.sdb') else DISABLED
 
     def configure_detail_buttons(self, text: str, event: EventType):
         """

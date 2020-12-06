@@ -43,6 +43,7 @@ class Map:
         self.pointed_location: Optional[Location] = None
         self.selected_locations = set()
         self.points = []
+        self.windrose = PhotoImage(file='windrose.png')
         self.update()
 
     def generate_random_vilages(self, number_of_villages: int) -> List[Point]:
@@ -119,11 +120,12 @@ class Map:
 
     def update(self):
         if not self.points and self.manager.lords:
-            self.points = self.generate_random_vilages(2900)
+            self.points = [l.position for l in self.manager.locations]
         try:
             canvas: Canvas = self.application.map_canvas
             canvas.delete('loc', 'p', 'gizmo')
             self.draw_visible_map_locations(canvas)
+            self.draw_scale_and_wind_rose()
             self.draw_minimap(canvas)
         except AttributeError:
             pass
@@ -205,11 +207,15 @@ class Map:
         for p in self.points:
             canvas.create_oval(
                 10 + p[0] / 100, 10 + p[1] / 100, 10 + p[0] / 100, 10 + p[1] / 100,
-                outline='red', tags='p'
+                outline='grey50', tags='p'
             )
         canvas.create_rectangle(
             *[10 + (i / 100) / self.zoom for i in self.viewport], outline='black'
         )
+
+    def draw_scale_and_wind_rose(self):
+        x, y = 525, 70
+        self.application.map_canvas.create_image(x, y, image=self.windrose, tags='gizmo')
 
     def on_mouse_enter(self, event: EventType):
         print(f'Cursor entered canvas!')

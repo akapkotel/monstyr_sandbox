@@ -139,16 +139,16 @@ class LordsManager:
 
     def _save_data_to_db(self, convert_data: bool):
         full_path_name = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
+        if self.discarded:
+            os.remove(full_path_name)
         with shelve.open(full_path_name, 'c') as file:
             for lord in (l for l in self.lords if l not in self.discarded):
-                # print(f'saving {lord}')
                 if convert_data:
                     file[f'lord: {lord.id}'] = lord.prepare_to_save(self)
                 else:
                     file[f'lord: {lord.id}'] = lord
             for location in (l for l in self.locations if l not in self.discarded):
-                print(f'saving {location}')
-                file[f'location: {location.id}'] = location
+                file[f'location: {location.id}'] = location.prepare_to_save(self)
         print(f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
 
     def prepare_to_save(self,
@@ -166,26 +166,8 @@ class LordsManager:
         # Since we saved our instances with id's instead of the other objects
         # references, we need to get_data our references back, when loading our
         # instance:
-        if isinstance(instance, Nobleman):
-            return self.convert_ids_to_noblemen(instance)
-        else:
-            return self.convert_ids_to_locations(instance)
-
-    def convert_ids_to_noblemen(self, lord: Nobleman) -> Nobleman:
-        if lord.spouse:
-            lord._spouse = self.get_lord_of_id(lord.spouse)
-        if lord.liege:
-            lord.liege = self.get_lord_of_id(lord.liege)
-        lord._vassals = {self.get_lord_of_id(v) for v in lord.vassals}
-        lord._children = {self.get_lord_of_id(c) for c in lord.children}
-        lord._siblings = {self.get_lord_of_id(s) for s in lord.siblings}
-        lord._fiefs = {self.get_location_of_id(f) for f in lord.fiefs}
-        return lord
-
-    def convert_ids_to_locations(self, location: Location) -> Location:
-        if location.owner:
-            location.owner = self.get_lord_of_id(location.owner)
-        return location
+        functions = self.get_lord_of_id, self.get_location_of_id
+        return instance.convert_ids_to_instances(*functions)
 
     @staticmethod
     def _load_data_from_db() -> Tuple[
@@ -308,19 +290,17 @@ class LordsManager:
             self._lords[new_object.id] = new_object
 
     def discard(self, discarded: Union[Nobleman, Location]):
-        collection = self.collection(discarded)
-        collection.discard(discarded)
         self.discarded.add(discarded)
-
-    def collection(self,
-                   obj: Union[Nobleman, Location]) -> Union[
-        Set[Nobleman], Set[Location]]:
-        return set(self.lords) if isinstance(obj, Nobleman) else set(
-            self.locations)
+        if isinstance(discarded, Nobleman):
+            del self._lords[discarded.id]
+        else:
+            del self._locations[discarded.id]
 
     def clear(self):
-        self._lords.clear()
+        self.discarded.update(self.locations)
+        self.discarded.update(self.lords)
         self._locations.clear()
+        self._lords.clear()
 
     @staticmethod
     def clear_db():
