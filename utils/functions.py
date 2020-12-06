@@ -2,21 +2,20 @@
 
 import os
 
-from typing import Union, Tuple, List, Callable
+from typing import Union, Tuple, List, Callable, Sized, Collection, Optional
 from functools import wraps
 from tkinter import StringVar, Listbox, Event, END
 from arcade import Window
-from arcade.key import BACKSPACE, SPACE, DELETE
+from arcade.key import BACKSPACE, SPACE
 
 ENGLISH = 'english'
 POLISH = 'polish'
-EXTENSION = '.txt'
 
 LANGUAGES = {}
-LANG_DIR = os.path.join(os.getcwd(), 'languages')
+LANG_DIR = 'languages/'
 for lang_file in os.listdir(LANG_DIR):
-    lang_dict = LANGUAGES[lang_file.rstrip(EXTENSION)] = {}
-    with open(os.path.join(LANG_DIR, lang_file), 'r') as file:
+    lang_dict = LANGUAGES[lang_file.rstrip('.txt')] = {}
+    with open(LANG_DIR + lang_file, 'r') as file:
         for line in file.readlines():
             key, value = line.rstrip('\n').split(' = ')
             lang_dict[key] = value
@@ -52,11 +51,10 @@ def get_screen_size() -> Tuple[int, int]:
 
 
 def load_image_or_placeholder(filename: str):
-    import os
     from tkinter import PhotoImage
-    if os.path.exists(filename):
+    if os.path.isfile(filename):
         return PhotoImage(file=filename)
-    return PhotoImage(file=os.path.join(os.getcwd(), 'no_image.png'))
+    return PhotoImage(file='no_image.png')
 
 
 def print_return(func):
@@ -71,51 +69,51 @@ def print_return(func):
 def input_match_search(query_variable: Union[StringVar, str],
                        searched: Callable,
                        updated: Union[Listbox, List],
-                       event: Union[Event, int]):
+                       event: Union[Event, int]) -> Optional[List]:
     """
-    Handle dynamic search called when user writes his query in tkinter lords
-    manager or in arcade map application. There are two cases with different
-    types of parameters passed to this function. Both of them are handled in
-    two steps: (1) updating value of virtual variable which stores current
-    query with the last user-pressed key, and then (2) updating the list of
-    elements of searched collection to match the query.
+    Handle dynamic search called when user writes his query in tkinter
+    lords manager or in arcade map application.
+
+    :param updated: lambda expression
     """
     if isinstance(query_variable, StringVar):
+        # because this function is called by tkinter bind() method, the
+        # StringVar value is not yet updated with pressed key, so we must
+        # use as a query our own variable updated before actual StringVar
+        # is modified:
         query = update_tk_stringvar(event, query_variable)
     else:
-        query = update_string(event, query_variable)
-    update_target_with_variable(query, searched, updated)
+        query = query_variable
+    return update_list_of_matching_results(query, searched(), updated)
 
 
 def update_tk_stringvar(event: Event, query_variable: StringVar) -> str:
     if (pressed := event.keysym) == 'BackSpace':
-        query = query_variable.get()[:-1]
+        return query_variable.get()[:-1]
     elif pressed == 'space':
-        query = query_variable.get() + ' '
+        return query_variable.get() + ' '
     else:
-        query = query_variable.get() + pressed
-    return query
+        return query_variable.get() + pressed
 
 
-def update_string(event: int, query_variable: str) -> str:
-    if (pressed := event) == BACKSPACE:
-        query = query_variable[:-1]
-    elif pressed == SPACE:
-        query = query_variable + ' '
+def update_string_with_pressed_key(key: int, query_variable: str) -> str:
+    if (pressed := key) == BACKSPACE:
+        return query_variable[:-1]
+    elif (letter := chr(pressed)).isalpha() or letter.isspace():
+        return query_variable + letter
     else:
-        query = query_variable + chr(pressed)
-    return query
+        return query_variable
 
 
-def update_target_with_variable(query: str,
-                                searched: Callable,
-                                updated: Union[Listbox, List]):
-    if isinstance(updated, Listbox):
-        updated.delete(0, END)
-        for x in (x.name for x in searched() if query in x.name):
-            updated.insert(END, x)
+def update_list_of_matching_results(query: str,
+                                    searched: Collection,
+                                    updated_list: Union[Listbox, List]):
+    if isinstance(updated_list, Listbox):
+        updated_list.delete(0, END)
+        for x in (x.name for x in searched if query in x.name):
+            updated_list.insert(END, x)
     else:  # updated is a normal python list object
-        updated = [x.name for x in searched() if query in x.name]
+        return [x.name for x in searched if query in x.name.lower()]
 
 
 def remove_arcade_window_from_returned_value(func: Callable):
@@ -136,9 +134,8 @@ def open_if_not_opened(func, window, spritelist):
 
 
 def get_current_language():
-    path_to_file = os.path.join(os.getcwd(), 'config.txt')
-    with open(path_to_file, 'r') as config:
-        language = config.readline().rstrip('\n').split('=')[1]
+    with open('config.txt', 'r') as config:
+        language = config.readline().rstrip('\n')
     return language
 
 
@@ -157,3 +154,8 @@ def filtered_slots_names(_object, ignore_fields: Tuple) -> List[str]:
 
 def slot_to_field(slot: str) -> str:
     return f"{slot.lstrip('_').replace('_', ' ').title()}:"
+
+
+def clamp(value, maximum, minimum) -> Union[int, float]:
+    """Guarantee that number will by larger than min and less than max."""
+    return max(minimum, min(value, maximum))

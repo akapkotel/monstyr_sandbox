@@ -4,8 +4,19 @@ from __future__ import annotations
 import os
 
 from random import randint
-from typing import List, Set, Dict, Union, Optional
-from enums import *
+from typing import List, Set, Tuple, Dict, Union, Optional
+from utils.enums import *
+
+
+def convert_ids_to_instances(instance, names, to_lord, to_location):
+    for name in names:
+        func = to_location if name == '_fiefs' else to_lord
+        if (attribute := getattr(instance, name)) is not None:
+            try:
+                setattr(instance, name, {func(i) for i in attribute})
+            except TypeError:
+                setattr(instance, name, func(attribute))
+    return instance
 
 
 class Nobleman:
@@ -44,7 +55,7 @@ class Nobleman:
         self.military_rank = military_rank
         self.liege: Optional[Union[Nobleman, int]] = liege
         self._vassals: Set[Union[Nobleman, int]] = set()
-        self._fiefs: Set[Union[Nobleman, int]] = set()
+        self._fiefs: Set[Union[Location, int]] = set()
         self.info: List[str] = []
 
     def __repr__(self):
@@ -86,14 +97,6 @@ class Nobleman:
             if self.age - child.age > 12:
                 self._children.add(child)
 
-    def add_children(self, *children):
-        for child in children:
-            self.add_child(child)
-
-    def add_child(self, child: Nobleman):
-        if self.age - child.age > 12:
-            self._children.add(child)
-
     @property
     def vassals(self) -> Set[Union[Nobleman, int]]:
         return self._vassals
@@ -114,9 +117,9 @@ class Nobleman:
     def fiefs(self) -> Set[Union[Location, int]]:
         return self._fiefs
 
-    def add_fiefs(self, *fiefs: Union[Location, int]):
-        self._fiefs.update(fiefs)
-        for fief in fiefs:
+    def add_fief(self, fief: Union[Location, int]):
+        self._fiefs.add(fief)
+        if isinstance(fief, Location):
             fief.owner = self
 
     @fiefs.deleter
@@ -190,11 +193,43 @@ class Nobleman:
     def hierarchy(self) -> Dict:
         return self.title.hierarchy()
 
+    def prepare_to_save(self, manager):
+        self.convert_spouse_to_id(manager)
+        self.convert_liege_to_id(manager)
+        self.convert_lords_and_fiefs_to_ids()
+        return self
+
+    def convert_spouse_to_id(self, manager):
+        if self.spouse:
+            try:
+                self._spouse = self.spouse.id
+            except AttributeError:
+                self._spouse = manager.get_lord_by_name(self._spouse).id
+
+    def convert_liege_to_id(self, manager):
+        if self.liege:
+            try:
+                self.liege = self.liege.id
+            except AttributeError:
+                self.liege = manager.get_lord_by_name(self.liege).id
+
+    def convert_lords_and_fiefs_to_ids(self):
+        for attr in ('_children', '_siblings', '_vassals', '_fiefs'):
+            try:
+                setattr(self, attr, {elem.id for elem in getattr(self, attr)})
+            except AttributeError:
+                pass
+
+    def convert_ids_to_instances(self, to_lord, to_location) -> Nobleman:
+        names = '_spouse', 'liege', '_fiefs', '_siblings', '_children', '_vassals'
+        return convert_ids_to_instances(self, names, to_lord, to_location)
+
 
 class Location:
 
     __slots__ = ['id', 'map_icon', 'name', 'picture', 'position', 'type',
-                 'owner', 'faction', 'population', 'soldiers', 'description']
+                 'owner', 'faction', 'population', 'soldiers', 'description',
+                 'roads_to']
 
     def __init__(self,
                  id: int,
@@ -210,27 +245,44 @@ class Location:
         self.picture = picture
         self.name = name or location_type.value
         self.type = location_type
-        self.map_icon = self.get_proper_map_icon(self)
+        self.map_icon = self.get_proper_picture(self)
         self.position = position
         self.owner = owner
         self.faction = Faction.neutral if owner is None else owner.faction
         self.population = population
         self.soldiers = soldiers
         self.description = ''
+        self.roads_to = set()
+
+        if owner is not None:
+            owner.add_fief(self)
 
     def __repr__(self):
-        return f'{self.type.value} {self.name if self.name != self.type.value else ""}'
+        if self.name == self.type.value:
+            return self.type.value.title()
+        return f'{self.type.value.title()} {self.name}'
 
     @property
     def full_name(self):
         return self.__repr__()
 
     @staticmethod
-    def get_proper_map_icon(location: Location):
-        map_icon_name = os.path.join('map_icons', location.name) + '.png'
-        if os.path.exists(map_icon_name):
-            return map_icon_name
+    def get_proper_picture(location: Location) -> str:
+        preferred = os.path.join(os.getcwd(), 'pictures', f'{location.name}.png')
+        if os.path.isfile(preferred):
+            return preferred
         return f'{location.type.value}_{randint(1, 4)}.png'
+
+    def prepare_to_save(self, manager) -> Location:
+        if self.type.value not in self.picture:
+            self.picture = Location.get_proper_picture(self)
+        if self.owner and isinstance(self.owner, str):
+            self.owner = manager.get_lord_by_name(self.owner)
+        return self
+
+    def convert_ids_to_instances(self, to_lord, to_location) -> Location:
+        names = 'owner', 'roads_to'
+        return convert_ids_to_instances(self, names, to_lord, to_location)
 
 
 class Counter:
