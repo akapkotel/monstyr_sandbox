@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
-import PIL
+import math
+from math import radians, sin, cos
 
-from typing import Optional, Union, List, Tuple
+from random import randint, choice
+from typing import Optional, Union, Any, List, Tuple, Dict
 
 from tkinter import EventType, Canvas, Tk, PhotoImage, SUNKEN
 
@@ -40,7 +42,67 @@ class Map:
         self.cursor_position = None
         self.pointed_location: Optional[Location] = None
         self.selected_locations = set()
+        self.points = []
         self.update()
+
+    def generate_random_vilages(self, number_of_villages: int) -> List[Point]:
+        points = self.generate_random_spawn_points(number_of_villages)
+        for point in points:
+            lords = [l for l in self.manager.lords]
+            villages_names = self.manager.villages_names
+            self.manager.add(
+                Location(
+                    len(self.manager.locations) + 1,
+                    villages_names.pop(randint(0, len(villages_names) - 1)),
+                    choice([f'village_{i}.png' for i in range(1, 5, 1)]),
+                    point,
+                    owner=choice(lords),
+                    population=randint(145, 325)
+                )
+            )
+        return points
+
+    def generate_random_spawn_points(self, number_of_villages) -> List[Point]:
+        radius = 150
+        grid_cell_size = int(radius / math.sqrt(2))
+        grid: Dict[Tuple[int, int], Any] = self.generate_grid(grid_cell_size)
+        points = []
+
+        grid_rows = self.height // grid_cell_size
+        grid_columns = self.width // grid_cell_size
+
+        while number_of_villages:
+            point = randint(0, self.width), randint(0, self.height)
+            cell = int(point[0]) // grid_cell_size, int(point[1] // grid_cell_size)
+            if self.valid(cell, point, radius, grid, grid_columns, grid_rows):
+                grid[cell] = point
+                points.append(point)
+                number_of_villages -= 1
+        return points
+
+    def valid(self, cell, point, radius, grid, grid_columns, grid_rows):
+        x, y = cell
+        min_x = max(0, x - 2)
+        max_x = min(grid_columns, x + 2)
+        min_y = max(0, y - 2)
+        max_y = min(grid_rows, y + 2)
+        for i in range(min_x, max_x):
+            for j in range(min_y, max_y):
+                if (other := grid[(i, j)]) is not None:
+                    dist = math.hypot(
+                        (other[0] - point[0]), (other[1] - point[1])
+                    )
+                    if dist < radius:
+                        return False
+        return True
+
+    def generate_grid(self, grid_cell_size: int) -> Dict[Tuple[int, int], Any]:
+        grid_rows = self.height // grid_cell_size
+        grid_columns = self.width // grid_cell_size
+        return {
+            (c, r): None for c in range(grid_columns) for r in
+            range(grid_rows)
+        }
 
     def create_map_canvas(self, parent) -> Canvas:
         canvas = Canvas(parent, width=MAP_CANVAS_WIDTH, height=MAP_CANVAS_HEIGHT,
@@ -56,9 +118,11 @@ class Map:
         return canvas
 
     def update(self):
+        if not self.points and self.manager.lords:
+            self.points = self.generate_random_vilages(2900)
         try:
-            canvas = self.application.map_canvas
-            canvas.delete('all')
+            canvas: Canvas = self.application.map_canvas
+            canvas.delete('loc', 'p', 'gizmo')
             self.draw_visible_map_locations(canvas)
             self.draw_minimap(canvas)
         except AttributeError:
@@ -69,9 +133,16 @@ class Map:
         pointed = False
         self.pointed_location = None
         l, b, r, t = self.viewport
+        zoom = self.zoom
+        for p in self.points:
+            if not (l < p[0] * zoom < r and b < p[1] * zoom < t):
+                continue
+            p = p[0] * zoom - l, p[1] * zoom - b
+            canvas.create_oval(
+                p[0] - 5, p[1] - 5, p[0] + 5, p[1] + 5, outline='red', tags='p'
+            )
         for location in self.manager.locations:
             x, y = location.position
-            zoom = self.zoom
             if not (l < x * zoom < r and b < y * zoom < t):
                 continue
             x *= zoom
@@ -81,14 +152,14 @@ class Map:
                 if pointed:
                     self.pointed_location = location
             else:
-                color = 'grey'
+                color = 'white'
             self.draw_location(canvas, color, location, x - l, y - b)
 
     def draw_location(self, canvas, color, location, x, y):
         zoom = self.zoom
         if location.type in NAME_ONLY:
             text = location.name
-            self.draw_town_icon(canvas, color, zoom, x, y)
+            self.draw_house_icon(canvas, color, zoom, x, y)
         else:
             self.draw_rectanle_icon(canvas, color, zoom, x, y)
             text = location.full_name
@@ -98,7 +169,7 @@ class Map:
         canvas.create_text(x + 10, y, font=font, text=text, tags='loc', anchor='w')
 
     @staticmethod
-    def draw_town_icon(canvas, color, zoom, x, y):
+    def draw_house_icon(canvas, color, zoom, x, y):
         size = 5 * zoom
         canvas.create_polygon(
             x - size, y - size, x, y - 2 * size, x + size, y - size, x + size,
@@ -116,7 +187,7 @@ class Map:
     def draw_selection_gizmo_around_location(canvas, zoom, x, y):
         size = 10 * zoom
         canvas.create_rectangle(
-            x - size, y - size, x + size, y + size, outline='yellow', width=3
+            x - size, y - size, x + size, y + size, outline='yellow', width=3, tags='gizmo'
         )
 
     def check_if_pointing_at_location(self, x, y, vl, vb) -> Tuple[str, bool]:
@@ -126,11 +197,16 @@ class Map:
         if l < cx + vl < r and b < cy + vb < t:
             return 'yellow', True
         else:
-            return 'grey', False
+            return 'white', False
 
     def draw_minimap(self, canvas: Canvas):
         canvas.create_rectangle(
-            10, 10, 10 + self.width // 100, 10 + self.height // 100, fill='white')
+            10, 10, 10 + self.width // 100, 10 + self.height // 100, fill='white', tags='gizmo')
+        for p in self.points:
+            canvas.create_oval(
+                10 + p[0] / 100, 10 + p[1] / 100, 10 + p[0] / 100, 10 + p[1] / 100,
+                outline='red', tags='p'
+            )
         canvas.create_rectangle(
             *[10 + (i / 100) / self.zoom for i in self.viewport], outline='black'
         )
@@ -192,28 +268,26 @@ class Map:
         Move map viewport to the position of the selected Location, or to the
         averaged position of the selected Nobleman fiefs.
         """
-        l, b, *_ = self.viewport
-        position = self._get_position_to_move(instance)
-        new_left = position[0] - 300
-        new_bottom = position[1] - 300
-        self.update_viewport(new_left - l, new_bottom - b)
+        if (position := self._get_position_to_move(instance)) is not None:
+            new_left = position[0] - MAP_CANVAS_WIDTH // 2
+            new_bottom = position[1] - MAP_CANVAS_HEIGHT // 2
+            l, b, *_ = self.viewport
+            self.update_viewport(new_left - l, new_bottom - b)
 
-    def _get_position_to_move(self, instance) -> Point:
+    def _get_position_to_move(self, instance) -> Optional[Point]:
         self.selected_locations.clear()
         if isinstance(instance, Location):
             self.selected_locations.add(instance)
             return instance.position
-        elif len(instance.fiefs) == 0:
-            self.selected_locations.update(instance.fiefs)
-            return self.width // 2, self.height // 2
-        else:
+        elif instance.fiefs:
             return self._get_average_position_of_lords_fiefs(instance)
 
-    @staticmethod
-    def _get_average_position_of_lords_fiefs(lord: Nobleman) -> Point:
-        position = 0, 0
-        positions = len(lord.fiefs)
-        for fief in lord.fiefs:
+    def _get_average_position_of_lords_fiefs(self, lord: Nobleman) -> Point:
+        fiefs = [self.manager.get_location_of_id(i) for i in lord.fiefs]
+        self.selected_locations.update(fiefs)
+        position = [0, 0]
+        positions = len(fiefs)
+        for fief in fiefs:
             position[0] += fief.position[0]
             position[1] += fief.position[1]
         return position[0] / positions, position[1] / positions

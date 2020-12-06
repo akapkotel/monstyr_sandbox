@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import shelve
 
 from typing import List, Dict, Set, Union
 from functools import lru_cache
@@ -37,6 +38,7 @@ LORDS_VASSALS = {
 
 class LordsManager:
     """Container and manager for all Nobleman instances."""
+    villages_names = []
     names: Dict[Sex, List[str]] = {}
     surnames: List[str]
     prefixes = List[str]
@@ -52,6 +54,7 @@ class LordsManager:
         self.names[Sex.woman] = self.load_names('f_names.txt')
         self.surnames = self.load_names('surnames.txt')
         self.prefixes = self.load_names('prefixes.txt')
+        self.villages_names = self.load_names('villages_names.txt')
 
     @property
     def lords(self):
@@ -135,11 +138,10 @@ class LordsManager:
         return f'portraits/{age_part}noble{lord.sex.value}.png'
 
     def _save_data_to_db(self, convert_data: bool):
-        import shelve
         full_path_name = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
         with shelve.open(full_path_name, 'c') as file:
             for lord in (l for l in self.lords if l not in self.discarded):
-                print(f'saving {lord}')
+                # print(f'saving {lord}')
                 if convert_data:
                     file[f'lord: {lord.id}'] = lord.prepare_to_save(self)
                 else:
@@ -147,8 +149,7 @@ class LordsManager:
             for location in (l for l in self.locations if l not in self.discarded):
                 print(f'saving {location}')
                 file[f'location: {location.id}'] = location
-        print(
-            f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
+        print(f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
 
     def prepare_to_save(self,
                         instance: Union[Nobleman, Location]) -> Union[Nobleman, Location]:
@@ -196,7 +197,7 @@ class LordsManager:
         with shelve.open(full_path_name, 'r') as file:
             for elem in file:
                 instance = file[elem]
-                print(f'loading {instance.name}')
+                # print(f'loading {instance.name}')
                 if isinstance(instance, Nobleman):
                     lords[instance.id] = instance
                 else:

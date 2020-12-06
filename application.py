@@ -706,17 +706,20 @@ class Application(tk.Tk):
             value = variable.get()
         else:
             value = self.convert_data_to_attribute(name, attribute, widget)
+            print(name, value)
         setattr(instance, name, value)
+        print(getattr(instance, name, value))
 
     def convert_data_to_attribute(self, name, attribute, widget) -> Any:
         value = self.get_widget_value(widget)
+        print(name, value, type(attribute))
         if isinstance(attribute, MyEnum):
             return self.cast_value_to_enum(attribute, value)
         elif isinstance(attribute, Set):
             return self.cast_value_to_set(name, value)
         elif isinstance(attribute, int):
             return int(value)
-        elif isinstance(attribute, str):
+        elif isinstance(value, str):
             return value
         elif isinstance(attribute, Tuple):
             entry_x, entry_y = widget  # data from two Entry widgets in list

@@ -183,16 +183,31 @@ class Nobleman:
         return self.title.hierarchy()
 
     def prepare_to_save(self, manager):
+        self.convert_spouse_to_id(manager)
+        self.convert_liege_to_id(manager)
+        self.convert_lords_and_fiefs_to_ids()
+        return self
+
+    def convert_spouse_to_id(self, manager):
         if self.spouse:
-            self._spouse = self.spouse.id
+            try:
+                self._spouse = self.spouse.id
+            except AttributeError:
+                self._spouse = manager.get_lord_by_name(self._spouse).id
+
+    def convert_liege_to_id(self, manager):
         if self.liege:
-            self.liege = self.liege.id
+            try:
+                self.liege = self.liege.id
+            except AttributeError:
+                self.liege = manager.get_lord_by_name(self.liege).id
+
+    def convert_lords_and_fiefs_to_ids(self):
         for attr in ('_children', '_siblings', '_vassals', '_fiefs'):
             try:
                 setattr(self, attr, {elem.id for elem in getattr(self, attr)})
             except AttributeError:
                 pass
-        return self
 
 
 class Location:
@@ -246,7 +261,7 @@ class Location:
     def prepare_to_save(self, manager) -> Location:
         if self.type.value not in self.picture:
             self.picture = Location.get_proper_picture(self)
-        if isinstance(self.owner, str):
+        if self.owner and isinstance(self.owner, str):
             self.owner = manager.get_lord_by_name(self.owner)
         if self.owner:
             self.owner.add_fief(self.id)
