@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 import math
-from math import radians, sin, cos
 
 from random import randint, choice
 from typing import Optional, Union, Any, List, Tuple, Dict
+from shapely.geometry import MultiPoint, LineString, Point as ShapelyPoint
+from shapely.ops import triangulate
 
 from tkinter import EventType, Canvas, Tk, PhotoImage, SUNKEN
 
 from utils.enums import LocationType
 from utils.classes import Location, Nobleman
-from utils.functions import clamp
+from utils.functions import clamp, distance_2d, Point
 from lords_manager.lords_manager import LordsManager
 
 MAP_CANVAS_WIDTH = 600
@@ -19,9 +20,106 @@ MAP_CANVAS_HEIGHT = 600
 MIN_ZOOM = 1
 MAX_ZOOM = 5
 NAME_ONLY = (LocationType.village, LocationType.town, LocationType.city)
+VILLAGES_COUNT = 2900
+VILLAGES_RADIUS = 150
+TREES_RADIUS = 75
 
 
-Point = Tuple[Union[int, float], Union[int, float]]
+class WorldBuilder:
+
+    def __init__(self, map: Map):
+        self.map = map
+        self.borders = [
+            (0, 0), (0, self.map.height), (self.map.width, self.map.height),
+            (self.map.width, 0)
+        ]
+        self.points = []
+
+    def build_world(self, villages_count=0) -> List:
+        if locations := self.map.manager.locations:
+            points = [location.position for location in locations]
+        else:
+            points = self.get_random_points(villages_count, VILLAGES_RADIUS)
+            self.spawn_villages_at_points(points)
+        borders = self.borders
+        roads = self.connect_locations_with_roads(borders + points)
+        return roads
+
+    def spawn_villages_at_points(self, points):
+        for point in points:
+            lords = [l for l in self.map.manager.lords]
+            villages_names = self.map.manager.villages_names
+            self.map.manager.add(
+                Location(
+                    len(self.map.manager.locations) + 1,
+                    villages_names.pop(randint(0, len(villages_names) - 1)),
+                    choice([f'village_{i}.png' for i in range(1, 5, 1)]),
+                    point,
+                    owner=choice(lords),
+                    population=randint(65, 240)
+                )
+            )
+
+    def get_random_points(self, count, radius) -> List[Point]:
+        grid_cell_size = int(radius / math.sqrt(2))
+        grid: Dict[Tuple[int, int], Any] = self.generate_grid(grid_cell_size)
+        grid_rows = self.map.height // grid_cell_size
+        grid_columns = self.map.width // grid_cell_size
+        points = []
+
+        required_villages_count = count or VILLAGES_COUNT
+        while required_villages_count:
+            point = (randint(25, self.map.width-150),
+                     randint(25, self.map.height-150))
+            cell = int(point[0]) // grid_cell_size, int(point[1] // grid_cell_size)
+            if self.valid(cell, point, radius, grid, grid_columns, grid_rows):
+                grid[cell] = point
+                points.append(point)
+                required_villages_count -= 1
+        return points
+
+    @staticmethod
+    def random_point_in_cell(cell, grid_cell_size) -> Point:
+        x = randint(0, grid_cell_size) * cell[0]
+        y = randint(0, grid_cell_size) * cell[1]
+        return x, y
+
+    @staticmethod
+    def valid(cell, point, radius, grid, grid_columns, grid_rows):
+        """
+        Check if there is no other spawn-point in any of the 5x5 cells-matrix
+        around the point containing other point closer than radius distance.
+        """
+        if grid[cell] is not None:
+            return False
+        x, y = cell
+        min_x = max(0, x - 2)
+        max_x = min(grid_columns, x + 2)
+        min_y = max(0, y - 2)
+        max_y = min(grid_rows, y + 2)
+        for i in range(min_x, max_x):
+            for j in range(min_y, max_y):
+                if (other := grid[(i, j)]) is not None:
+                    dist = math.hypot((other[0] - point[0]), (other[1] - point[1]))
+                    if dist < radius:
+                        return False
+        return True
+
+    def generate_grid(self, grid_cell_size: int) -> Dict[Tuple[int, int], Any]:
+        grid_rows = self.map.height // grid_cell_size
+        grid_columns = self.map.width // grid_cell_size
+        return {
+            (c, r): None for c in range(grid_columns) for r in range(grid_rows)
+        }
+
+    def connect_locations_with_roads(self, points):
+        shapely_points = MultiPoint(points)
+        connections = triangulate(shapely_points, edges=True)
+        paths = [
+            c for c in connections if
+            distance_2d(c.coords[0], c.coords[1]) < 250
+        ]
+        return paths
 
 
 class Map:
@@ -34,7 +132,6 @@ class Map:
     def __init__(self, application: Tk, width: int, height: int):
         self.application = application
         self.manager: LordsManager = application.manager
-        self.locations: List[Location] = []
         self.width = width
         self.height = height
         self.zoom = 1.0
@@ -42,72 +139,17 @@ class Map:
         self.cursor_position = None
         self.pointed_location: Optional[Location] = None
         self.selected_locations = set()
-        self.points = []
+        self.minimap_points: List[Point] = []
+        self.roads: List[Tuple[LineString, ShapelyPoint]] = []
+        self.regions: List[List[Point]] = []
         self.windrose = PhotoImage(file='windrose.png')
+        self.builder = WorldBuilder(self)
         self.update()
-
-    def generate_random_vilages(self, number_of_villages: int) -> List[Point]:
-        points = self.generate_random_spawn_points(number_of_villages)
-        for point in points:
-            lords = [l for l in self.manager.lords]
-            villages_names = self.manager.villages_names
-            self.manager.add(
-                Location(
-                    len(self.manager.locations) + 1,
-                    villages_names.pop(randint(0, len(villages_names) - 1)),
-                    choice([f'village_{i}.png' for i in range(1, 5, 1)]),
-                    point,
-                    owner=choice(lords),
-                    population=randint(145, 325)
-                )
-            )
-        return points
-
-    def generate_random_spawn_points(self, number_of_villages) -> List[Point]:
-        radius = 150
-        grid_cell_size = int(radius / math.sqrt(2))
-        grid: Dict[Tuple[int, int], Any] = self.generate_grid(grid_cell_size)
-        points = []
-
-        grid_rows = self.height // grid_cell_size
-        grid_columns = self.width // grid_cell_size
-
-        while number_of_villages:
-            point = randint(0, self.width), randint(0, self.height)
-            cell = int(point[0]) // grid_cell_size, int(point[1] // grid_cell_size)
-            if self.valid(cell, point, radius, grid, grid_columns, grid_rows):
-                grid[cell] = point
-                points.append(point)
-                number_of_villages -= 1
-        return points
-
-    def valid(self, cell, point, radius, grid, grid_columns, grid_rows):
-        x, y = cell
-        min_x = max(0, x - 2)
-        max_x = min(grid_columns, x + 2)
-        min_y = max(0, y - 2)
-        max_y = min(grid_rows, y + 2)
-        for i in range(min_x, max_x):
-            for j in range(min_y, max_y):
-                if (other := grid[(i, j)]) is not None:
-                    dist = math.hypot(
-                        (other[0] - point[0]), (other[1] - point[1])
-                    )
-                    if dist < radius:
-                        return False
-        return True
-
-    def generate_grid(self, grid_cell_size: int) -> Dict[Tuple[int, int], Any]:
-        grid_rows = self.height // grid_cell_size
-        grid_columns = self.width // grid_cell_size
-        return {
-            (c, r): None for c in range(grid_columns) for r in
-            range(grid_rows)
-        }
 
     def create_map_canvas(self, parent) -> Canvas:
         canvas = Canvas(parent, width=MAP_CANVAS_WIDTH, height=MAP_CANVAS_HEIGHT,
-                        bg='DarkOliveGreen3', borderwidth=2, relief=SUNKEN)
+                        bg='DarkOliveGreen3', borderwidth=2, relief=SUNKEN,
+                        cursor='crosshair')
         canvas.bind('<Enter>', self.on_mouse_enter)
         canvas.bind('<Leave>', self.on_mouse_exit)
         canvas.bind('<Motion>', self.on_mouse_motion)
@@ -119,30 +161,45 @@ class Map:
         return canvas
 
     def update(self):
-        if not self.points and self.manager.lords:
-            self.points = [l.position for l in self.manager.locations]
+        if not self.roads and self.manager.lords:  # build only once
+            self.build_world()
         try:
             canvas: Canvas = self.application.map_canvas
-            canvas.delete('loc', 'p', 'gizmo')
-            self.draw_visible_map_locations(canvas)
-            self.draw_scale_and_wind_rose()
-            self.draw_minimap(canvas)
+            self.draw_map(canvas)
         except AttributeError:
             pass
         self.application.after(13, self.update)
 
-    def draw_visible_map_locations(self, canvas: Canvas):
+    def draw_map(self, canvas):
+        canvas.delete('all')
+        self.draw_visible_map_contents(canvas)
+        self.draw_scale_and_wind_rose()
+        self.draw_minimap(canvas)
+
+    def build_world(self):
+        self.roads = [(r, r.centroid) for r in self.builder.build_world()]
+        self.minimap_points = [l.position for l in self.manager.locations]
+
+    def draw_visible_map_contents(self, canvas: Canvas):
         pointed = False
         self.pointed_location = None
         l, b, r, t = self.viewport
         zoom = self.zoom
-        for p in self.points:
-            if not (l < p[0] * zoom < r and b < p[1] * zoom < t):
-                continue
-            p = p[0] * zoom - l, p[1] * zoom - b
-            canvas.create_oval(
-                p[0] - 5, p[1] - 5, p[0] + 5, p[1] + 5, outline='red', tags='p'
-            )
+        self.draw_roads(canvas, b, l, r, t, zoom)
+        self.draw_regions()
+        self.draw_locations(b, canvas, l, pointed, r, t, zoom)
+
+    def draw_roads(self, canvas, b, l, r, t, zoom):
+        for i, (road, centroid) in enumerate(self.roads):
+            points = [p for p in road.coords]
+            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in points):
+                points = [(p[0] * zoom - l, p[1] * zoom - b) for p in points]
+                canvas.create_line(*points, dash=(5, 2))
+
+    def draw_regions(self):
+        pass
+
+    def draw_locations(self, b, canvas, l, pointed, r, t, zoom):
         for location in self.manager.locations:
             x, y = location.position
             if not (l < x * zoom < r and b < y * zoom < t):
@@ -155,9 +212,9 @@ class Map:
                     self.pointed_location = location
             else:
                 color = 'white'
-            self.draw_location(canvas, color, location, x - l, y - b)
+            self.draw_single_location(canvas, color, location, x - l, y - b)
 
-    def draw_location(self, canvas, color, location, x, y):
+    def draw_single_location(self, canvas, color, location, x, y):
         zoom = self.zoom
         if location.type in NAME_ONLY:
             text = location.name
@@ -167,29 +224,45 @@ class Map:
             text = location.full_name
         if location in self.selected_locations:
             self.draw_selection_gizmo_around_location(canvas, zoom, x, y)
-        font = f'Times {int(12 * zoom)}'
-        canvas.create_text(x + 10, y, font=font, text=text, tags='loc', anchor='w')
+        font = f'Times {int(12 * zoom)} bold'
+        canvas.create_text(x + 10, y, font=font, text=text, anchor='w')
 
     @staticmethod
     def draw_house_icon(canvas, color, zoom, x, y):
         size = 5 * zoom
         canvas.create_polygon(
             x - size, y - size, x, y - 2 * size, x + size, y - size, x + size,
-            y + size, x - size, y + size, fill=color, outline='black', tags='loc'
+            y + size, x - size, y + size, fill=color, outline='black'
         )
 
     @staticmethod
     def draw_rectanle_icon(canvas, color, zoom, x, y):
         size = 7 * zoom
         canvas.create_rectangle(
-            x - size, y - size, x + size, y + size, fill=color, outline='black', tags='loc'
+            x - size, y - size, x + size, y + size, fill=color, outline='black'
         )
+
+    @staticmethod
+    def draw_abbey_icon(canvas, color, zoom, x, y):
+        size = 5 * zoom
+        canvas.create_polygon(
+            x - size, y - size, x, y - 2 * size, x + size, y - size, x + size,
+            y + size, x - size, y + size, fill=color, outline='black'
+        )
+        Map.draw_cross(canvas, x, y, zoom)
+
+    @staticmethod
+    def draw_cross(canvas, x, y, zoom):
+        size = 3 * zoom
+        y -= 4 * size
+        canvas.create_line(x - size, y, x + size, y, fill='black', width=2)
+        canvas.create_line(x, y - size, x, y + size, fill='black', width=2)
 
     @staticmethod
     def draw_selection_gizmo_around_location(canvas, zoom, x, y):
         size = 10 * zoom
         canvas.create_rectangle(
-            x - size, y - size, x + size, y + size, outline='yellow', width=3, tags='gizmo'
+            x - size, y - size, x + size, y + size, outline='yellow', width=3
         )
 
     def check_if_pointing_at_location(self, x, y, vl, vb) -> Tuple[str, bool]:
@@ -203,19 +276,19 @@ class Map:
 
     def draw_minimap(self, canvas: Canvas):
         canvas.create_rectangle(
-            10, 10, 10 + self.width // 100, 10 + self.height // 100, fill='white', tags='gizmo')
-        for p in self.points:
+            10, 10, 10 + self.width // 100, 10 + self.height // 100, fill='white')
+        for x, y in self.minimap_points:
             canvas.create_oval(
-                10 + p[0] / 100, 10 + p[1] / 100, 10 + p[0] / 100, 10 + p[1] / 100,
-                outline='grey50', tags='p'
+                10 + x / 100, 10 + y / 100, 10 + x / 100, 10 + y / 100,
+                outline='grey50'
             )
         canvas.create_rectangle(
-            *[10 + (i / 100) / self.zoom for i in self.viewport], outline='black'
+            *[10 + (i / 100) / self.zoom for i in self.viewport], outline='red'
         )
 
     def draw_scale_and_wind_rose(self):
         x, y = 525, 70
-        self.application.map_canvas.create_image(x, y, image=self.windrose, tags='gizmo')
+        self.application.map_canvas.create_image(x, y, image=self.windrose)
 
     def on_mouse_enter(self, event: EventType):
         print(f'Cursor entered canvas!')
@@ -250,6 +323,7 @@ class Map:
             self.zoom_out(ratio)
         elif event.num == 5 or event.delta == -120:
             self.zoom_in(ratio)
+        self.update_viewport(0, 0)
 
     def zoom_out(self, ratio):
         if self.zoom > MIN_ZOOM:

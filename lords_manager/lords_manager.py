@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import shelve
+import string
 
 from typing import List, Dict, Set, Union
 from functools import lru_cache
@@ -36,6 +37,13 @@ LORDS_VASSALS = {
 }
 
 
+FORBIDEN = ('x', 'y', 'j', 'k', 'w')
+LETTERS = string.ascii_lowercase
+ALLOWED = [l for l in LETTERS if l not in FORBIDEN]
+VOVELS = 'a', 'o', 'i', 'u', 'e'
+CONSONANTS = [l for l in ALLOWED if l not in VOVELS]
+
+
 class LordsManager:
     """Container and manager for all Nobleman instances."""
     villages_names = []
@@ -45,16 +53,23 @@ class LordsManager:
     _lords: Dict[int, Nobleman] = {}
     _locations: Dict[int, Location] = {}
     discarded: Set = set()
+    ready = False
 
     def __init__(self):
-        self.load_data_from_text_files()
+        self.ready = self.load_data_from_text_files()
 
     def load_data_from_text_files(self):
-        self.names[Sex.man] = self.load_names('m_names.txt')
-        self.names[Sex.woman] = self.load_names('f_names.txt')
-        self.surnames = self.load_names('surnames.txt')
-        self.prefixes = self.load_names('prefixes.txt')
-        self.villages_names = self.load_names('villages_names.txt')
+        try:
+            self.names[Sex.man] = self.load_names('m_names.txt')
+            self.names[Sex.woman] = self.load_names('f_names.txt')
+            self.surnames = self.load_names('surnames.txt')
+            self.prefixes = self.load_names('prefixes.txt')
+            self.villages_names = list(set(self.load_names('villages.txt')))
+            print(len(self.villages_names))
+            return True
+        except Exception as e:
+            print(str(e))
+            return False
 
     @property
     def lords(self):
@@ -69,7 +84,7 @@ class LordsManager:
         """Load list of str names from txt file."""
         full_path_name = os.path.join(os.getcwd(), 'names', file_name)
         with open(full_path_name, 'r') as file:
-            names = file.readline().rstrip('\n').split(',')
+            names = file.read().rstrip('\n').split(',')
         return sorted(names)
 
     def load_full_lords_names_set(self,
@@ -166,7 +181,7 @@ class LordsManager:
         # Since we saved our instances with id's instead of the other objects
         # references, we need to get_data our references back, when loading our
         # instance:
-        functions = self.get_lord_of_id, self.get_location_of_id
+        functions = self.get_location_of_id, self.get_lord_of_id
         return instance.convert_ids_to_instances(*functions)
 
     @staticmethod

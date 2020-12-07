@@ -2,11 +2,14 @@
 
 import os
 
-from typing import Union, Tuple, List, Callable, Sized, Collection, Optional
+from math import hypot
+from typing import Union, Tuple, List, Callable, Collection, Optional
 from functools import wraps
 from tkinter import StringVar, Listbox, Event, END
-from arcade import Window
-from arcade.key import BACKSPACE, SPACE
+
+
+Point = Tuple[Union[int, float], Union[int, float]]
+
 
 ENGLISH = 'english'
 POLISH = 'polish'
@@ -96,15 +99,6 @@ def update_tk_stringvar(event: Event, query_variable: StringVar) -> str:
         return query_variable.get() + pressed
 
 
-def update_string_with_pressed_key(key: int, query_variable: str) -> str:
-    if (pressed := key) == BACKSPACE:
-        return query_variable[:-1]
-    elif (letter := chr(pressed)).isalpha() or letter.isspace():
-        return query_variable + letter
-    else:
-        return query_variable
-
-
 def update_list_of_matching_results(query: str,
                                     searched: Collection,
                                     updated_list: Union[Listbox, List]):
@@ -114,14 +108,6 @@ def update_list_of_matching_results(query: str,
             updated_list.insert(END, x)
     else:  # updated is a normal python list object
         return [x.name for x in searched if query in x.name.lower()]
-
-
-def remove_arcade_window_from_returned_value(func: Callable):
-    @wraps(func)
-    def remover(*args, **kwargs):
-        result = func(*args, **kwargs)
-        return [e for e in result if not isinstance(e, Window)]
-    return remover
 
 
 def open_if_not_opened(func, window, spritelist):
@@ -135,7 +121,7 @@ def open_if_not_opened(func, window, spritelist):
 
 def get_current_language():
     with open('config.txt', 'r') as config:
-        language = config.readline().rstrip('\n')
+        language = config.readline().rstrip('\n').split('=')[1]
     return language
 
 
@@ -159,3 +145,7 @@ def slot_to_field(slot: str) -> str:
 def clamp(value, maximum, minimum) -> Union[int, float]:
     """Guarantee that number will by larger than min and less than max."""
     return max(minimum, min(value, maximum))
+
+def distance_2d(coord_a: Point, coord_b: Point) -> float:
+    """Calculate distance between two points in 2D space."""
+    return hypot(coord_b[0] - coord_a[0], coord_b[1] - coord_a[1])

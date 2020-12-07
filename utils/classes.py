@@ -4,18 +4,24 @@ from __future__ import annotations
 import os
 
 from random import randint
-from typing import List, Set, Tuple, Dict, Union, Optional
+from typing import List, Set, Tuple, Dict, Union, Optional, Callable
 from utils.enums import *
 
 
-def convert_ids_to_instances(instance, names, to_lord, to_location):
+LORDS_SETS = ('_children', '_vassals', '_spouse', '_siblings', 'liege')
+
+
+def convert_ids_to_instances(instance: Union[Nobleman, Location],
+                             names: Tuple[str, ...],
+                             to_location: Callable,
+                             to_lord: Callable) -> Union[Nobleman, Location]:
     for name in names:
         func = to_location if name == '_fiefs' else to_lord
-        if (attribute := getattr(instance, name)) is not None:
+        if value := getattr(instance, name):
             try:
-                setattr(instance, name, {func(i) for i in attribute})
+                setattr(instance, name, {func(i) for i in value})
             except TypeError:
-                setattr(instance, name, func(attribute))
+                setattr(instance, name, func(value))
     return instance
 
 
@@ -220,9 +226,9 @@ class Nobleman:
             except AttributeError:
                 pass
 
-    def convert_ids_to_instances(self, to_lord, to_location) -> Nobleman:
-        names = '_spouse', 'liege', '_fiefs', '_siblings', '_children', '_vassals'
-        return convert_ids_to_instances(self, names, to_lord, to_location)
+    def convert_ids_to_instances(self, to_location, to_lord) -> Nobleman:
+        names = LORDS_SETS + ('_fiefs', )
+        return convert_ids_to_instances(self, names, to_location, to_lord)
 
 
 class Location:
@@ -280,9 +286,9 @@ class Location:
             self.owner = manager.get_lord_by_name(self.owner)
         return self
 
-    def convert_ids_to_instances(self, to_lord, to_location) -> Location:
+    def convert_ids_to_instances(self, to_location, to_lord) -> Location:
         names = 'owner', 'roads_to'
-        return convert_ids_to_instances(self, names, to_lord, to_location)
+        return convert_ids_to_instances(self, names, to_location, to_lord)
 
 
 class Counter:

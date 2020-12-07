@@ -10,11 +10,11 @@ from dbm import error
 from typing import Dict, Set, List, Optional, Union
 from random import choice
 from functools import partial
-from typing import Any, Iterable, Tuple, Callable, Generator
+from typing import Any, Iterable, Tuple, Generator
 from tkinter import (
     DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, CENTER, END, IntVar,
     StringVar, Label, Entry, Spinbox, Listbox, Frame, LabelFrame, ACTIVE,
-    SUNKEN, Canvas, EventType, Toplevel, Button as TkButton
+    SUNKEN, EventType, Toplevel, Button as TkButton
 )
 from utils.enums import (
     MyEnum, Title, Sex, Nationality, Faction, LocationType
@@ -22,12 +22,11 @@ from utils.enums import (
 from utils.functions import (load_image_or_placeholder, plural, localize,
     input_match_search, get_current_language, slot_to_field
 )
-from utils.classes import Nobleman, Location, Counter
+from utils.classes import Nobleman, Location, Counter, LORDS_SETS
 from lords_manager.lords_manager import LordsManager
 from map.map import Map
 
 WINDOW_TITLE = 'Lords Manager'
-LORDS_SETS = ('_children', '_vassals', '_spouse', '_siblings', 'liege')
 MAP_WIDTH = 10000
 MAP_HEIGHT = 12000
 
@@ -89,7 +88,7 @@ class Application(tk.Tk):
 
         self.language = language
         self.manager = LordsManager()
-        self.map = Map(application=self, width=MAP_WIDTH, height=MAP_HEIGHT)
+        self.map = Map(self, MAP_WIDTH, MAP_HEIGHT)
         self.sections: Dict[str, tk.LabelFrame]
 
         # --- Variables ---
@@ -381,7 +380,8 @@ class Application(tk.Tk):
 
     @staticmethod
     def sdb_file_exists() -> str:
-        return NORMAL if os.path.exists('lords.sdb') else DISABLED
+        database_path = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
+        return NORMAL if os.path.exists(database_path) else DISABLED
 
     def configure_detail_buttons(self, text: str, event: EventType):
         """
