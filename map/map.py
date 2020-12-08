@@ -115,10 +115,7 @@ class WorldBuilder:
     def connect_locations_with_roads(self, points):
         shapely_points = MultiPoint(points)
         connections = triangulate(shapely_points, edges=True)
-        paths = [
-            c for c in connections if
-            distance_2d(c.coords[0], c.coords[1]) < 250
-        ]
+        paths = [c for c in connections if distance_2d(c.coords[0], c.coords[1]) < 250]
         return paths
 
 
@@ -173,7 +170,7 @@ class Map:
     def draw_map(self, canvas):
         canvas.delete('all')
         self.draw_visible_map_contents(canvas)
-        self.draw_scale_and_wind_rose()
+        self.draw_scale_and_wind_rose(canvas)
         self.draw_minimap(canvas)
 
     def build_world(self):
@@ -194,9 +191,10 @@ class Map:
             points = [p for p in road.coords]
             if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in points):
                 points = [(p[0] * zoom - l, p[1] * zoom - b) for p in points]
-                canvas.create_line(*points, dash=(5, 2))
+                canvas.create_line(*points, dash=(6, 3), fill='brown')
 
     def draw_regions(self):
+        # TODO
         pass
 
     def draw_locations(self, b, canvas, l, pointed, r, t, zoom):
@@ -216,9 +214,10 @@ class Map:
 
     def draw_single_location(self, canvas, color, location, x, y):
         zoom = self.zoom
+        text = location.name
         if location.type in NAME_ONLY:
-            text = location.name
-            self.draw_house_icon(canvas, color, zoom, x, y)
+            population = int(location.population // 100)
+            self.draw_house_icon(canvas, color, zoom, x, y, population)
         else:
             self.draw_rectanle_icon(canvas, color, zoom, x, y)
             text = location.full_name
@@ -228,8 +227,8 @@ class Map:
         canvas.create_text(x + 10, y, font=font, text=text, anchor='w')
 
     @staticmethod
-    def draw_house_icon(canvas, color, zoom, x, y):
-        size = 5 * zoom
+    def draw_house_icon(canvas, color, zoom, x, y, population):
+        size = zoom * (4 + population)
         canvas.create_polygon(
             x - size, y - size, x, y - 2 * size, x + size, y - size, x + size,
             y + size, x - size, y + size, fill=color, outline='black'
@@ -277,34 +276,43 @@ class Map:
     def draw_minimap(self, canvas: Canvas):
         canvas.create_rectangle(
             10, 10, 10 + self.width // 100, 10 + self.height // 100, fill='white')
+        self.draw_locations_points(canvas)
+        self.draw_viewport(canvas)
+
+    def draw_locations_points(self, canvas):
         for x, y in self.minimap_points:
             canvas.create_oval(
                 10 + x / 100, 10 + y / 100, 10 + x / 100, 10 + y / 100,
                 outline='grey50'
             )
+
+    def draw_viewport(self, canvas):
         canvas.create_rectangle(
             *[10 + (i / 100) / self.zoom for i in self.viewport], outline='red'
         )
 
-    def draw_scale_and_wind_rose(self):
+    def draw_scale_and_wind_rose(self, canvas):
         x, y = 525, 70
-        self.application.map_canvas.create_image(x, y, image=self.windrose)
+        canvas.create_image(x, y, image=self.windrose)
+        # distance scale:
+        x, size = 450, self.zoom * 25
+        for i in range(1, 6, 1):
+            xi = x - (size * i)
+            y = xi + size
+            color = 'white' if i % 2 else 'black'
+            canvas.create_rectangle(xi, 40, y, 45, fill=color, outline='black')
 
     def on_mouse_enter(self, event: EventType):
-        print(f'Cursor entered canvas!')
         self.cursor_position = event.x, event.y
 
     def on_mouse_exit(self, event: EventType):
-        print(f'Cursor exited canvas!')
         self.cursor_position = None
 
     def on_left_click(self, event: EventType):
-        print(f'Left click on map canvas at: {event.x, event.y}')
         if (location := self.pointed_location) is not None:
             self.application.open_new_or_show_opened_window(location)
 
     def on_right_click(self, event: EventType):
-        print(f'Right click on map canvas at: {event.x, event.y}')
         canvas: Canvas = event.widget
 
     def on_mouse_motion(self, event: EventType):

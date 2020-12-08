@@ -27,7 +27,7 @@ LORDS_FIEFS = {  # title: (min fiefs, max fiefs)
 LORDS_VASSALS = {
     Title.client: {},
     Title.chevalier: {Title.client: 2},
-    Title.baronet: {Title.client: 4},
+    Title.baronet: {Title.chevalier: 4},
     Title.baron: {Title.baronet: 5, Title.chevalier: 5, Title.client: 6},
     # Title.vicecount: {Title.baronet: 6, Title.chevalier: 6, Title.client: 8},
     Title.count: {Title.baron: 4, Title.baronet: 4, Title.chevalier: 4,
@@ -294,10 +294,6 @@ class LordsManager:
         lord.vassals.discard(vassal)
         vassal.liege = None
 
-    def extend(self, *objects: Union[Nobleman, Location]):
-        collection = self.collection(objects[0])
-        collection.update(objects)
-
     def add(self, new_object: Union[Nobleman, Location]):
         if isinstance(new_object, Location):
             self._locations[new_object.id] = new_object
@@ -367,7 +363,7 @@ class LordsManager:
         Check if there is enough number od Nobleman of each Title to get_data
         correct amount of vassals for each lord in game.
         """
-        real_numbners = {
+        real_numbers = {
             Title.count: len(self.get_lords_of_title(Title.count)),
             Title.baron: len(self.get_lords_of_title(Title.baron)),
             Title.baronet: len(self.get_lords_of_title(Title.baronet)),
@@ -379,40 +375,36 @@ class LordsManager:
                    Title.client: 0}
 
         for title, vassals in LORDS_VASSALS.items():
-            for i in range(real_numbners[title]):
+            for i in range(real_numbers[title]):
                 for lower_title, value in vassals.items():
                     counter[lower_title] += value
 
         for title, count in counter.items():
-            if count > real_numbners[title]:
-                print(f'Not enaugh lords of title: {title.value}, '
-                      f'required: {count}, actual: {real_numbners[title]}')
+            if count > real_numbers[title]:
+                print(f'Not enough lords of title: {title.value}, '
+                      f'required: {count}, actual: {real_numbers[title]}')
                 return False
-        else:
-            print('ok', counter)
-            return True
+        return True
 
     def add_spouses(self):
-        free = set(self.lords)
-        for lord in (n for n in free if n.title is not Title.client):
-            if lord.spouse is None and random() > 0.25:
-                sex = Sex.man if lord.sex is Sex.woman else Sex.woman
-                name = choice(self.names[sex])
-                prefix = lord.prefix
-                surname = lord.family_name
-                full_name = f'{name} {prefix} {surname}'
-                min_age = lord.age - 10 if sex is Sex.woman else lord.age
-                max_age = lord.age if sex is Sex.woman else lord.age + 10
-                age = randint(min_age, max_age)
-                id = len(self.lords)
-                spouse = Nobleman(id, full_name, age,
-                                  title=lord.title)
-                spouse.portrait = self.get_generic_portrait_name(spouse)
-                self.prepare_lord_for_save(spouse)
-                self._lords[id] = spouse
-                self.convert_ids_to_noblemen(lord)
-                lord.spouse = spouse
-                self.prepare_lord_for_save(lord)
+        unmarried = {l for l in self.lords if l.spouse is None and random() > 0.25}
+        for lord in (n for n in unmarried if n.title is not Title.client):
+            sex = Sex.man if lord.sex is Sex.woman else Sex.woman
+            name = choice(self.names[sex])
+            prefix = lord.prefix
+            surname = lord.family_name
+            full_name = f'{name} {prefix} {surname}'
+            min_age = lord.age - 10 if sex is Sex.woman else lord.age
+            max_age = lord.age if sex is Sex.woman else lord.age + 10
+            age = randint(min_age, max_age)
+            id = len(self.lords)
+            spouse = Nobleman(id, full_name, age, title=lord.title)
+            spouse.portrait = self.get_generic_portrait_name(spouse)
+            self.prepare_to_save(spouse)
+            self._lords[id] = spouse
+            self.convert_ids_to_instances(lord)
+            lord.spouse = spouse
+            self.prepare_to_save(lord)
         self.save()
 
     def assign_free_vassals(self):

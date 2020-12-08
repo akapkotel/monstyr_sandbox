@@ -216,7 +216,7 @@ class Application(tk.Tk):
             label.grid(column=column.next(), row=row())
             label.bind('<Button-1>',
                        partial(self.change_locations_filter, location))
-            Entry(section, textvariable=value, width=3,
+            Entry(section, textvariable=value, width=4,
                   disabledbackground='white',
                   disabledforeground='black', state=DISABLED, justify=CENTER
                   ).grid(column=column.next(), row=row())
@@ -685,7 +685,6 @@ class Application(tk.Tk):
         When object data in one extra-window is changed and saved, update
         data in all other extra-windows currently opened.
         """
-        print(self.extra_windows)
         for window_class, windows in self.extra_windows.items():
             obj = 'lord' if window_class is Nobleman else 'location'
             func = eval(f'self.manager.get_{obj}_of_id')

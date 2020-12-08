@@ -36,10 +36,6 @@ admin.auth will be available for game-masters version.
 It is also possible to manually mess with the data by importing
 LordsManager class from this file and call it's methods. See -> 4.
 
-3. Map arcade application:
-
-    python sandbox.py
-
 4. Manualy modify database.
 
 Open python console, and wrote:
@@ -58,6 +54,8 @@ In development.
 ### To be done:
 1. Documentation
 2. Add tests
-3. Finish map application.
-4. Create single-file executables for linux and windows.
-5. Migrate map from arcade to tkinter using canvas to draw locations.
+3. Better-looking roads (not stright-lines, but some curves).
+4. Regions representing nobleman-fiefs.
+5. More filtering-options to browse lords and locations.
+6. Create single-file executables for linux and windows.
+7. Migrate map from arcade to tkinter using canvas to draw locations.
