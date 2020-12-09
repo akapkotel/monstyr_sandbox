@@ -2,7 +2,7 @@
 
 import os
 
-from math import hypot
+from math import hypot, atan2, degrees
 from typing import Union, Tuple, List, Callable, Collection, Optional
 from functools import wraps
 from tkinter import StringVar, Listbox, Event, END
@@ -146,6 +146,21 @@ def clamp(value, maximum, minimum) -> Union[int, float]:
     """Guarantee that number will by larger than min and less than max."""
     return max(minimum, min(value, maximum))
 
+
 def distance_2d(coord_a: Point, coord_b: Point) -> float:
     """Calculate distance between two points in 2D space."""
     return hypot(coord_b[0] - coord_a[0], coord_b[1] - coord_a[1])
+
+
+def calculate_angle(sx: float, sy: float, ex: float, ey: float) -> float:
+    """
+    Calculate angle in direction from 'start' to the 'end' point in degrees.
+
+    :param:sx float -- x coordinate of start point
+    :param:sy float -- y coordinate of start point
+    :param:ex float -- x coordinate of end point
+    :param:ey float -- y coordinate of end point
+    :return: float -- degrees in range 0-360.
+    """
+    rads = atan2(ex - sx, ey - sy)
+    return -degrees(rads) % 360

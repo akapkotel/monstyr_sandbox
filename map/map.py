@@ -5,14 +5,15 @@ import math
 
 from random import randint, choice
 from typing import Optional, Union, Any, List, Tuple, Dict
-from shapely.geometry import MultiPoint, LineString, Point as ShapelyPoint
+from multiprocessing import Pool
+from shapely.geometry import MultiPoint, Point as ShapelyPoint
 from shapely.ops import triangulate
 
 from tkinter import EventType, Canvas, Tk, PhotoImage, SUNKEN
 
 from utils.enums import LocationType
 from utils.classes import Location, Nobleman
-from utils.functions import clamp, distance_2d, Point
+from utils.functions import clamp, distance_2d, calculate_angle, Point
 from lords_manager.lords_manager import LordsManager
 
 MAP_CANVAS_WIDTH = 600
@@ -35,7 +36,7 @@ class WorldBuilder:
         ]
         self.points = []
 
-    def build_world(self, villages_count=0) -> List:
+    def build_world(self, villages_count=0) -> Tuple[List, Dict]:
         if locations := self.map.manager.locations:
             points = [location.position for location in locations]
         else:
@@ -43,7 +44,8 @@ class WorldBuilder:
             self.spawn_villages_at_points(points)
         borders = self.borders
         roads = self.connect_locations_with_roads(borders + points)
-        return roads
+        regions = self.generate_map_regions(roads, locations)
+        return [r for r in roads if distance_2d(*r[0]) < 250], regions
 
     def spawn_villages_at_points(self, points):
         for point in points:
@@ -61,17 +63,17 @@ class WorldBuilder:
             )
 
     def get_random_points(self, count, radius) -> List[Point]:
-        grid_cell_size = int(radius / math.sqrt(2))
-        grid: Dict[Tuple[int, int], Any] = self.generate_grid(grid_cell_size)
-        grid_rows = self.map.height // grid_cell_size
-        grid_columns = self.map.width // grid_cell_size
+        cell_size = int(radius / math.sqrt(2))
+        grid: Dict[Tuple[int, int], Any] = self.generate_grid(cell_size)
+        grid_rows = self.map.height // cell_size
+        grid_columns = self.map.width // cell_size
         points = []
 
         required_villages_count = count or VILLAGES_COUNT
         while required_villages_count:
             point = (randint(25, self.map.width-150),
                      randint(25, self.map.height-150))
-            cell = int(point[0]) // grid_cell_size, int(point[1] // grid_cell_size)
+            cell = int(point[0]) // cell_size, int(point[1] // cell_size)
             if self.valid(cell, point, radius, grid, grid_columns, grid_rows):
                 grid[cell] = point
                 points.append(point)
@@ -79,9 +81,9 @@ class WorldBuilder:
         return points
 
     @staticmethod
-    def random_point_in_cell(cell, grid_cell_size) -> Point:
-        x = randint(0, grid_cell_size) * cell[0]
-        y = randint(0, grid_cell_size) * cell[1]
+    def random_point_in_cell(cell, cell_size) -> Point:
+        x = randint(0, cell_size) * cell[0]
+        y = randint(0, cell_size) * cell[1]
         return x, y
 
     @staticmethod
@@ -105,18 +107,36 @@ class WorldBuilder:
                         return False
         return True
 
-    def generate_grid(self, grid_cell_size: int) -> Dict[Tuple[int, int], Any]:
-        grid_rows = self.map.height // grid_cell_size
-        grid_columns = self.map.width // grid_cell_size
+    def generate_grid(self, cell_size: int) -> Dict[Tuple[int, int], Any]:
+        grid_rows = self.map.height // cell_size
+        grid_columns = self.map.width // cell_size
         return {
             (c, r): None for c in range(grid_columns) for r in range(grid_rows)
         }
 
-    def connect_locations_with_roads(self, points):
+    @staticmethod
+    def connect_locations_with_roads(points):
         shapely_points = MultiPoint(points)
         connections = triangulate(shapely_points, edges=True)
-        paths = [c for c in connections if distance_2d(c.coords[0], c.coords[1]) < 250]
-        return paths
+        return [([p for p in c.coords], c.centroid) for c in connections]
+
+    @staticmethod
+    def generate_map_regions(roads, locations) -> Dict[Point, List[Point]]:
+        regions: Dict[Point, List[Point]] = {
+            loc.position: [] for loc in locations
+        }
+        # add road centroid to each region this road connects, since both
+        # ends of road are centers of regions:
+        for road in roads:
+            for x, y in road[0]:
+                try:
+                    regions[(int(x), int(y))].append((road[1].x, road[1].y))
+                except KeyError:
+                    pass
+        # sort vertices in regions to use them later to build polygons
+        for center, points in regions.items():
+            points.sort(key=lambda e: calculate_angle(*center, *e))
+        return regions
 
 
 class Map:
@@ -137,8 +157,8 @@ class Map:
         self.pointed_location: Optional[Location] = None
         self.selected_locations = set()
         self.minimap_points: List[Point] = []
-        self.roads: List[Tuple[LineString, ShapelyPoint]] = []
-        self.regions: List[List[Point]] = []
+        self.roads: List[Tuple[List[Point], ShapelyPoint]] = []
+        self.regions: Dict[Point, List[Point]] = {}
         self.windrose = PhotoImage(file='windrose.png')
         self.builder = WorldBuilder(self)
         self.update()
@@ -174,7 +194,7 @@ class Map:
         self.draw_minimap(canvas)
 
     def build_world(self):
-        self.roads = [(r, r.centroid) for r in self.builder.build_world()]
+        self.roads, self.regions = self.builder.build_world()
         self.minimap_points = [l.position for l in self.manager.locations]
 
     def draw_visible_map_contents(self, canvas: Canvas):
@@ -182,20 +202,23 @@ class Map:
         self.pointed_location = None
         l, b, r, t = self.viewport
         zoom = self.zoom
+        self.draw_regions(canvas, b, l, r, t, zoom)
         self.draw_roads(canvas, b, l, r, t, zoom)
-        self.draw_regions()
         self.draw_locations(b, canvas, l, pointed, r, t, zoom)
 
     def draw_roads(self, canvas, b, l, r, t, zoom):
         for i, (road, centroid) in enumerate(self.roads):
-            points = [p for p in road.coords]
-            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in points):
-                points = [(p[0] * zoom - l, p[1] * zoom - b) for p in points]
+            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in road):
+                points = [(p[0] * zoom - l, p[1] * zoom - b) for p in road]
                 canvas.create_line(*points, dash=(6, 3), fill='brown')
 
-    def draw_regions(self):
-        # TODO
-        pass
+    def draw_regions(self, canvas, b, l, r, t, zoom):
+        for location in self.selected_locations:
+            region = self.regions[location.position]
+            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in region):
+                points = [(p[0] * zoom - l, p[1] * zoom - b) for p in region]
+                canvas.create_polygon(*points, dash=(6, 3), outline='yellow',
+                                      fill='DarkOliveGreen3')
 
     def draw_locations(self, b, canvas, l, pointed, r, t, zoom):
         for location in self.manager.locations:
