@@ -7,10 +7,13 @@ from typing import List, Dict, Set, Union
 from functools import lru_cache
 from random import random, choice, randint
 from typing import Tuple
+from shapely.geometry import Point as ShapelyPoint
+
 from utils.enums import (
     Title, Sex, Nationality, Faction, ChurchTitle, MilitaryRank, LocationType
 )
 from utils.classes import Nobleman, Location
+from utils.functions import Point
 
 LORDS_FIEFS = {  # title: (min fiefs, max fiefs)
     Title.client: (0, 0),
@@ -52,6 +55,9 @@ class LordsManager:
     prefixes = List[str]
     _lords: Dict[int, Nobleman] = {}
     _locations: Dict[int, Location] = {}
+    roads: List[Tuple[List[Point], ShapelyPoint]] = []
+    regions: Dict[Point, List[Point]] = {}
+    forests: Dict[Point, List[Tuple[Point, ...]]] = {}
     discarded: Set = set()
     ready = False
 
@@ -65,7 +71,6 @@ class LordsManager:
             self.surnames = self.load_names('surnames.txt')
             self.prefixes = self.load_names('prefixes.txt')
             self.villages_names = list(set(self.load_names('villages.txt')))
-            print(len(self.villages_names))
             return True
         except Exception as e:
             print(str(e))
@@ -154,7 +159,7 @@ class LordsManager:
 
     def _save_data_to_db(self, convert_data: bool):
         full_path_name = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
-        if self.discarded:
+        if self.discarded and os.path.exists(full_path_name):
             os.remove(full_path_name)
         with shelve.open(full_path_name, 'c') as file:
             for lord in (l for l in self.lords if l not in self.discarded):
@@ -164,7 +169,12 @@ class LordsManager:
                     file[f'lord: {lord.id}'] = lord
             for location in (l for l in self.locations if l not in self.discarded):
                 file[f'location: {location.id}'] = location.prepare_to_save(self)
-        print(f'Saved {len(self._lords)} lords and {len(self._locations)} locations')
+            file['roads'] = self.roads
+            file['regions'] = self.regions
+            file['forests'] = self.forests
+        print(f'Saved {len(self._lords)} lords, {len(self._locations)}'
+              f' locations, {sum([len(f) for f in self.forests.values()])},'
+              f'{len(self.roads)} roads.')
 
     def prepare_to_save(self,
                         instance: Union[Nobleman, Location]) -> Union[Nobleman, Location]:
@@ -184,23 +194,25 @@ class LordsManager:
         functions = self.get_location_of_id, self.get_lord_of_id
         return instance.convert_ids_to_instances(*functions)
 
-    @staticmethod
-    def _load_data_from_db() -> Tuple[
-        Dict[int, Nobleman], Dict[int, Location]]:
-        import shelve
-        lords: Dict[int, Nobleman] = {}
-        locations: Dict[int, Location] = {}
+    def _load_data_from_db(self):
         full_path_name = os.path.join(os.getcwd(), 'databases', 'lords.sdb')
         with shelve.open(full_path_name, 'r') as file:
             for elem in file:
                 instance = file[elem]
-                # print(f'loading {instance.name}')
                 if isinstance(instance, Nobleman):
-                    lords[instance.id] = instance
+                    self._lords[instance.id] = instance
+                elif isinstance(instance, List):
+                    self.roads = instance
+                elif isinstance(instance, Dict):
+                    if elem == 'regions':
+                        self.regions = instance
+                    else:
+                        self.forests = instance
                 else:
-                    locations[instance.id] = instance
-        print(f'Loaded {len(lords)} lords and {len(locations)} locations.')
-        return lords, locations
+                    self._locations[instance.id] = instance
+        print(f'Loaded {len(self._lords)} lords, {len(self._locations)}'
+              f' locations, {sum([len(f) for f in self.forests.values()])} '
+              f'trees and {len(self.roads)} roads.')
 
     def random_lord(self) -> Nobleman:
         return choice([lord for lord in self.lords])
@@ -224,7 +236,13 @@ class LordsManager:
     def get_lords_of_title(self, title: Title = None) -> Set[Nobleman]:
         if title is None:
             return set(self.lords)
-        return {noble for noble in self.lords if noble.title is title}
+        return {
+            n for n in self.lords if n.title is title and self.is_not_spouse(n)
+        }
+
+    @staticmethod
+    def is_not_spouse(nobleman: Nobleman) -> bool:
+        return nobleman.title == Title.client or len(nobleman.vassals) > 0
 
     def get_lords_of_military_rank(self,
                                    rank: MilitaryRank = None) -> Set[Nobleman]:
@@ -271,7 +289,7 @@ class LordsManager:
 
     @lru_cache(maxsize=1024)
     def get_location_by_name(self, name: str) -> Location:
-        return next((loc for loc in self.locations if name in loc.full_name))
+        return next((loc for loc in self.locations if name == loc.name))
 
     def get_vassals_of(self, liege: Union[Nobleman, str]) -> Set[Nobleman]:
         if isinstance(liege, str):
@@ -323,7 +341,7 @@ class LordsManager:
         self._save_data_to_db(create)
 
     def load(self):
-        self._lords, self._locations = self._load_data_from_db()
+        self._load_data_from_db()
 
     def __contains__(self, lord: Nobleman):
         return lord in self._lords
@@ -406,12 +424,6 @@ class LordsManager:
             lord.spouse = spouse
             self.prepare_to_save(lord)
         self.save()
-
-    def assign_free_vassals(self):
-        ronins = self.get_lords_without_liege()
-        ronins = {r for r in ronins if r.title is not Title.count}
-        for ronin in ronins:
-            pass
 
     def make_marriages(self):
         raise NotImplementedError

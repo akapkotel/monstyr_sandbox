@@ -14,7 +14,7 @@ from typing import Any, Iterable, Tuple, Generator
 from tkinter import (
     DISABLED, NORMAL, BOTH, TOP, LEFT, RIGHT, BOTTOM, CENTER, END, IntVar,
     StringVar, Label, Entry, Spinbox, Listbox, Frame, LabelFrame, ACTIVE,
-    SUNKEN, EventType, Toplevel, Button as TkButton
+    SUNKEN, EventType, Toplevel, Canvas, Button as TkButton
 )
 from utils.enums import (
     MyEnum, Title, Sex, Nationality, Faction, LocationType
@@ -89,6 +89,7 @@ class Application(tk.Tk):
         self.language = language
         self.manager = LordsManager()
         self.map = Map(self, MAP_WIDTH, MAP_HEIGHT)
+        self.map_canvas: Optional[Canvas] = None
         self.sections: Dict[str, tk.LabelFrame]
 
         # --- Variables ---
@@ -347,8 +348,8 @@ class Application(tk.Tk):
             lords = self.manager.get_lords_of_title(self.lords_filter)
         elif isinstance(self.lords_filter, Faction):
             lords = self.manager.get_lords_by_faction(self.lords_filter)
-        for lord in lords:
-            self.lords_list.insert(END, lord.title_and_name)
+        for lord in (l for l in lords if l.title == Title.client or l.vassals):
+            self.lords_list.insert(END, lord.full_name)
 
     def change_locations_filter(self, criteria: MyEnum, event: tk.Event):
         if criteria is None:
@@ -363,7 +364,7 @@ class Application(tk.Tk):
         self.locations_list.delete(0, END)
         for location in self.manager.get_locations_of_type(
                 self.locations_filter):
-            self.locations_list.insert(END, location.full_name)
+            self.locations_list.insert(END, location.name)
 
     def load_data(self):
         """Try load Nobleman and Location instances from shelve file."""
@@ -376,6 +377,9 @@ class Application(tk.Tk):
             self.update_widgets_values()
 
     def save_lords(self):
+        self.manager.roads = self.map.roads
+        self.manager.regions = self.map.regions
+        self.manager.forests = self.map.forests
         self.manager.save()
 
     @staticmethod
@@ -707,13 +711,10 @@ class Application(tk.Tk):
             value = variable.get()
         else:
             value = self.convert_data_to_attribute(name, attribute, widget)
-            print(name, value)
         setattr(instance, name, value)
-        print(getattr(instance, name, value))
 
     def convert_data_to_attribute(self, name, attribute, widget) -> Any:
         value = self.get_widget_value(widget)
-        print(name, value, type(attribute))
         if isinstance(attribute, MyEnum):
             return self.cast_value_to_enum(attribute, value)
         elif isinstance(attribute, Set):

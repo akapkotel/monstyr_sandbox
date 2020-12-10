@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import math
 
-from random import randint, choice
+from random import randint, choice, random
 from typing import Optional, Union, Any, List, Tuple, Dict
-from multiprocessing import Pool
 from shapely.geometry import MultiPoint, Point as ShapelyPoint
 from shapely.ops import triangulate
 
@@ -13,17 +12,21 @@ from tkinter import EventType, Canvas, Tk, PhotoImage, SUNKEN
 
 from utils.enums import LocationType
 from utils.classes import Location, Nobleman
-from utils.functions import clamp, distance_2d, calculate_angle, Point
+from utils.functions import (
+    clamp, distance_2d, calculate_angle, move_along_vector, Point
+)
 from lords_manager.lords_manager import LordsManager
+
 
 MAP_CANVAS_WIDTH = 600
 MAP_CANVAS_HEIGHT = 600
 MIN_ZOOM = 1
 MAX_ZOOM = 5
-NAME_ONLY = (LocationType.village, LocationType.town, LocationType.city)
+NAME_ONLY_LOCATIONS = (LocationType.village, LocationType.town, LocationType.city)
 VILLAGES_COUNT = 2900
 VILLAGES_RADIUS = 150
-TREES_RADIUS = 75
+FORRESTS_COUNT = 2700
+TREES_RADIUS = 175
 
 
 class WorldBuilder:
@@ -36,31 +39,65 @@ class WorldBuilder:
         ]
         self.points = []
 
-    def build_world(self, villages_count=0) -> Tuple[List, Dict]:
+    def build_world(self, villages_count=0) -> Tuple[List, Dict, Dict]:
+        locations, points = self.spawn_villages(villages_count)
+        roads, regions = self.spawn_roads_and_regions(points, locations)
+        forests = self.get_forests()
+        return [r for r in roads if distance_2d(*r[0]) < 250], regions, forests
+
+    def spawn_villages(self, villages_count):
         if locations := self.map.manager.locations:
             points = [location.position for location in locations]
         else:
             points = self.get_random_points(villages_count, VILLAGES_RADIUS)
             self.spawn_villages_at_points(points)
-        borders = self.borders
-        roads = self.connect_locations_with_roads(borders + points)
-        regions = self.generate_map_regions(roads, locations)
-        return [r for r in roads if distance_2d(*r[0]) < 250], regions
+        return locations, points
 
     def spawn_villages_at_points(self, points):
         for point in points:
             lords = [l for l in self.map.manager.lords]
             villages_names = self.map.manager.villages_names
+            location_type = LocationType.village if random() > 0.02 else LocationType.town
+            population = (65, 240) if location_type == LocationType.village else (500, 1750)
             self.map.manager.add(
                 Location(
                     len(self.map.manager.locations) + 1,
                     villages_names.pop(randint(0, len(villages_names) - 1)),
-                    choice([f'village_{i}.png' for i in range(1, 5, 1)]),
-                    point,
+                    position=point,
+                    location_type=location_type,
                     owner=choice(lords),
-                    population=randint(65, 240)
+                    population=randint(*population)
                 )
             )
+
+    def spawn_roads_and_regions(self, points, locations):
+        if self.map.manager.roads and self.map.manager.regions:
+            return self.map.manager.roads, self.map.manager.regions
+        roads = self.connect_locations_with_roads(self.borders + points)
+        regions = self.generate_map_regions(roads, locations)
+        return roads, regions
+
+    def get_forests(self) -> Dict[Point, List[Tuple[Point, ...]]]:
+        if self.map.manager.forests:
+            return self.map.manager.forests
+        else:
+            points = self.get_random_points(FORRESTS_COUNT, TREES_RADIUS)
+            return self.spawn_forests(points)
+
+    def spawn_forests(self, points) -> Dict[Point, List[Tuple[Point, ...]]]:
+        forests = {}
+        trees_count = 0
+        for x, y in points:
+            trees = []
+            for i in range(randint(6, 36)):
+                yi = y + choice(range(-6, 6, 1)) * 10
+                xi = x + choice(range(-6, 6, 1)) * 15
+                tree = ((xi, yi - 7), (xi - 5, yi + 7), (xi + 6, yi + 7))
+                trees.append(tree)
+                trees_count += 1
+            forests[(x, y)] = trees
+        print(f'Total number of trees grown: {trees_count}')
+        return forests
 
     def get_random_points(self, count, radius) -> List[Point]:
         cell_size = int(radius / math.sqrt(2))
@@ -110,9 +147,10 @@ class WorldBuilder:
     def generate_grid(self, cell_size: int) -> Dict[Tuple[int, int], Any]:
         grid_rows = self.map.height // cell_size
         grid_columns = self.map.width // cell_size
-        return {
+        grid = {
             (c, r): None for c in range(grid_columns) for r in range(grid_rows)
         }
+        return grid
 
     @staticmethod
     def connect_locations_with_roads(points):
@@ -157,11 +195,12 @@ class Map:
         self.pointed_location: Optional[Location] = None
         self.selected_locations = set()
         self.minimap_points: List[Point] = []
+        self.forests: Dict[Point, List[Tuple[Point, ...]]] = {}
         self.roads: List[Tuple[List[Point], ShapelyPoint]] = []
         self.regions: Dict[Point, List[Point]] = {}
         self.windrose = PhotoImage(file='windrose.png')
         self.builder = WorldBuilder(self)
-        self.update()
+        self.application.after(13, self.update)
 
     def create_map_canvas(self, parent) -> Canvas:
         canvas = Canvas(parent, width=MAP_CANVAS_WIDTH, height=MAP_CANVAS_HEIGHT,
@@ -175,16 +214,16 @@ class Map:
         canvas.bind('<Button-3>', self.on_right_click)
         canvas.bind('<Button-4>', self.on_mouse_scroll)
         canvas.bind('<Button-5>', self.on_mouse_scroll)
+        canvas.bind('<Double-1>', self.create_new_location)
         return canvas
 
     def update(self):
-        if not self.roads and self.manager.lords:  # build only once
-            self.build_world()
-        try:
+        if (not self.roads) and self.manager.lords:
+            self.roads, self.regions, self.forests = self.builder.build_world()
+            self.minimap_points = self.regions.keys()
+        if self.application.map_canvas is not None:
             canvas: Canvas = self.application.map_canvas
             self.draw_map(canvas)
-        except AttributeError:
-            pass
         self.application.after(13, self.update)
 
     def draw_map(self, canvas):
@@ -193,16 +232,13 @@ class Map:
         self.draw_scale_and_wind_rose(canvas)
         self.draw_minimap(canvas)
 
-    def build_world(self):
-        self.roads, self.regions = self.builder.build_world()
-        self.minimap_points = [l.position for l in self.manager.locations]
-
     def draw_visible_map_contents(self, canvas: Canvas):
         pointed = False
         self.pointed_location = None
         l, b, r, t = self.viewport
         zoom = self.zoom
         self.draw_regions(canvas, b, l, r, t, zoom)
+        self.draw_forests(canvas, b, l, r, t, zoom)
         self.draw_roads(canvas, b, l, r, t, zoom)
         self.draw_locations(b, canvas, l, pointed, r, t, zoom)
 
@@ -220,42 +256,63 @@ class Map:
                 canvas.create_polygon(*points, dash=(6, 3), outline='yellow',
                                       fill='DarkOliveGreen3')
 
+    def draw_forests(self, canvas, b, l, r, t, zoom):
+        for position, trees in self.forests.items():
+            x, y = position
+            if (l < x * zoom < r) and (b < y * zoom < t):
+                for tree in trees:
+                    points = [(p[0] * zoom - l, p[1] * zoom - b) for p in tree]
+                    canvas.create_polygon(*points, fill='green')
+
     def draw_locations(self, b, canvas, l, pointed, r, t, zoom):
         for location in self.manager.locations:
-            x, y = location.position
-            if not (l < x * zoom < r and b < y * zoom < t):
-                continue
-            x *= zoom
-            y *= zoom
-            if not pointed and self.cursor_position is not None:
-                color, pointed = self.check_if_pointing_at_location(x, y, l, b)
-                if pointed:
-                    self.pointed_location = location
-            else:
-                color = 'white'
-            self.draw_single_location(canvas, color, location, x - l, y - b)
+            x, y = location.position[0] * zoom, location.position[1] * zoom
+            if l < x < r and b < y < t:
+                if not pointed and self.cursor_position is not None:
+                    color, pointed = self.if_cursor_points_location(x, y, l, b)
+                    if pointed:
+                        self.pointed_location = location
+                else:
+                    color = 'white'
+                self.draw_single_location(canvas, color, location, x - l, y - b)
 
     def draw_single_location(self, canvas, color, location, x, y):
         zoom = self.zoom
         text = location.name
-        if location.type in NAME_ONLY:
-            population = int(location.population // 100)
-            self.draw_house_icon(canvas, color, zoom, x, y, population)
+        if location in self.selected_locations:
+            self.draw_selection_gizmo_around_location(canvas, zoom, x, y)
+        if location.type in NAME_ONLY_LOCATIONS:
+            self.draw_populated_location(canvas, color, zoom, x, y, location)
         else:
             self.draw_rectanle_icon(canvas, color, zoom, x, y)
             text = location.full_name
-        if location in self.selected_locations:
-            self.draw_selection_gizmo_around_location(canvas, zoom, x, y)
-        font = f'Times {int(12 * zoom)} bold'
-        canvas.create_text(x + 10, y, font=font, text=text, anchor='w')
+        self.draw_location_name(canvas, text, x, y, zoom)
+
+    def draw_populated_location(self, canvas, color, zoom, x, y, location):
+        size_modifier, icons_number = self.population_size_modifier(location)
+        size = zoom * (4 + size_modifier)
+        if not icons_number:
+            return self.draw_house_icon(canvas, color, size, x, y)
+        for i in range(0, icons_number):
+            angle_offset = 360 / icons_number
+            xi, yi = move_along_vector((x, y), size * 3, angle=angle_offset * i)
+            self.draw_house_icon(canvas, color, size, xi, yi)
 
     @staticmethod
-    def draw_house_icon(canvas, color, zoom, x, y, population):
-        size = zoom * (4 + population)
+    def draw_house_icon(canvas, color, size, x, y):
         canvas.create_polygon(
             x - size, y - size, x, y - 2 * size, x + size, y - size, x + size,
             y + size, x - size, y + size, fill=color, outline='black'
         )
+
+    @staticmethod
+    def population_size_modifier(location) -> Tuple[int, int]:
+        if location.type == LocationType.village:
+            return int(location.population / 100), 0
+        elif location.type == LocationType.town:
+            return int(location.population / 500), 3
+        else:
+            return int(location.population / 1500), 5
 
     @staticmethod
     def draw_rectanle_icon(canvas, color, zoom, x, y):
@@ -287,7 +344,7 @@ class Map:
             x - size, y - size, x + size, y + size, outline='yellow', width=3
         )
 
-    def check_if_pointing_at_location(self, x, y, vl, vb) -> Tuple[str, bool]:
+    def if_cursor_points_location(self, x, y, vl, vb) -> Tuple[str, bool]:
         cx, cy = self.cursor_position
         size = 7 * self.zoom
         l, b, r, t = x - size, y - size, x + size, y + size
@@ -295,6 +352,11 @@ class Map:
             return 'yellow', True
         else:
             return 'white', False
+
+    @staticmethod
+    def draw_location_name(canvas, text, x, y, zoom):
+        font = f'Times {int(12 * zoom)} bold'
+        canvas.create_text(x + 10, y, font=font, text=text, anchor='w')
 
     def draw_minimap(self, canvas: Canvas):
         canvas.create_rectangle(
@@ -402,3 +464,9 @@ class Map:
             position[0] += fief.position[0]
             position[1] += fief.position[1]
         return position[0] / positions, position[1] / positions
+
+    def create_new_location(self, event: EventType):
+        new_id = len(self.manager.locations) + 1
+        location = Location(new_id, name='', position=(event.x, event.y))
+        self.manager.add(location)
+        self.application.open_new_or_show_opened_window(location)

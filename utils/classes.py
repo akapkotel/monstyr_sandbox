@@ -134,7 +134,7 @@ class Nobleman:
 
     @property
     def name(self) -> str:
-        return self.title_and_name
+        return self.full_name
     @property
     def first_name(self) -> str:
         return self.full_name.split(' ')[0]
