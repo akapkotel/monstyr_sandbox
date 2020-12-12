@@ -171,13 +171,11 @@ def move_along_vector(start: Point,
                       target: Optional[Point] = None,
                       angle: Optional[float] = None) -> Point:
     """
-    Create movement vector starting at 'start' point angled in direction of
-    'target' point with scalar velocity 'velocity'. Optionally, instead of
-    'target' position, you can pass starting 'angle' of the vector.
-
-    Use 'current_waypoint' position only, when you now the point and do not know the
-    angle between two points, but want quickly calculate position of the
-    another point lying on the line connecting two, known points.
+    Move point (x, y) from the start position to the new position by the
+    angular velocity and/or angle. If all START, VELOCITY and TARGET are
+    provided, but no ANGLE, the angle would be calculated automatically.
+    When START, VELOCITY and ANGBLE are provided but no TARGET, the target
+    would be calculated. Return position (x, y) after movement.
 
     :param start: tuple -- point from vector starts
     :param target: tuple -- current_waypoint that vector 'looks at'

@@ -55,7 +55,7 @@ class LordsManager:
     prefixes = List[str]
     _lords: Dict[int, Nobleman] = {}
     _locations: Dict[int, Location] = {}
-    roads: List[Tuple[List[Point], ShapelyPoint]] = []
+    roads: List[Tuple[List[Point], ShapelyPoint, float]] = []
     regions: Dict[Point, List[Point]] = {}
     forests: Dict[Point, List[Tuple[Point, ...]]] = {}
     discarded: Set = set()

@@ -51,11 +51,17 @@ documentation available.
 ### Status
 In development.
 
+### Done:
+1. Manager.
+2. Migration of map from arcade to tkinter with Canvas usage.
+3. Map displaying and generating roads, provinces and forests.
+
 ### To be done:
 1. Documentation
 2. Add tests
 3. Better-looking roads (not stright-lines, but some curves).
-4. Regions representing nobleman-fiefs.
 5. More filtering-options to browse lords and locations.
 6. Create single-file executables for linux and windows.
-7. Migrate map from arcade to tkinter using canvas to draw locations.
+7.  Hills.
+8.  Rivers.
+9.  Nested locations? (e.g. windmill in the village)
