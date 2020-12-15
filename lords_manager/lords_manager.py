@@ -47,6 +47,9 @@ VOVELS = 'a', 'o', 'i', 'u', 'e'
 CONSONANTS = [l for l in ALLOWED if l not in VOVELS]
 
 
+TerrainElements = Dict[Point, List[Tuple[Point, ...]]]
+
+
 class LordsManager:
     """Container and manager for all Nobleman instances."""
     villages_names = []
@@ -57,7 +60,8 @@ class LordsManager:
     _locations: Dict[int, Location] = {}
     roads: List[Tuple[List[Point], ShapelyPoint, float]] = []
     regions: Dict[Point, List[Point]] = {}
-    forests: Dict[Point, List[Tuple[Point, ...]]] = {}
+    forests: TerrainElements = {}
+    hills: TerrainElements = {}
     discarded: Set = set()
     ready = False
 
@@ -173,8 +177,8 @@ class LordsManager:
             file['regions'] = self.regions
             file['forests'] = self.forests
         print(f'Saved {len(self._lords)} lords, {len(self._locations)}'
-              f' locations, {sum([len(f) for f in self.forests.values()])},'
-              f'{len(self.roads)} roads.')
+              f' locations, {sum([len(f) for f in self.forests.values()])} '
+              f'trees and {len(self.roads)} roads.')
 
     def prepare_to_save(self,
                         instance: Union[Nobleman, Location]) -> Union[Nobleman, Location]:
@@ -325,11 +329,18 @@ class LordsManager:
         else:
             del self._locations[discarded.id]
 
-    def clear(self):
-        self.discarded.update(self.locations)
-        self.discarded.update(self.lords)
-        self._locations.clear()
-        self._lords.clear()
+    def clear(self, lords=True, locations=True, forests=True, hills=True):
+        if lords:
+            self.discarded.update(self.lords)
+            self._lords.clear()
+        if locations:
+            self.discarded.update(self.locations)
+            self._locations.clear()
+            self.roads.clear()
+        if forests:
+            self.forests.clear()
+        if hills:
+            self.hills.clear()
 
     @staticmethod
     def clear_db():

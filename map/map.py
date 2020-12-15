@@ -17,10 +17,9 @@ from utils.functions import (
 )
 from lords_manager.lords_manager import LordsManager
 
-
 MAP_CANVAS_WIDTH = 600
 MAP_CANVAS_HEIGHT = 600
-MIN_ZOOM = 1
+MIN_ZOOM = 0.2
 MAX_ZOOM = 5
 NAME_ONLY_LOCATIONS = (LocationType.village, LocationType.town, LocationType.city)
 VILLAGES_COUNT = 2900
@@ -39,16 +38,16 @@ class WorldBuilder:
         ]
         self.points = []
 
-    def build_world(self, villages_count=0) -> Tuple[List, Dict, Dict]:
+    def build_world(self, villages=VILLAGES_COUNT) -> Tuple[List, Dict, Dict]:
         """
         Generate or use loaded data for map displayed elements.
         """
-        locations, points = self.spawn_villages(villages_count)
+        locations, points = self.spawn_villages(villages)
         roads, regions = self.spawn_roads_and_regions(points, locations)
         forests = self.get_forests()
         return [r for r in roads if r[2] < 250], regions, forests
 
-    def spawn_villages(self, villages_count):
+    def spawn_villages(self, villages_count: int):
         if locations := self.map.manager.locations:
             points = [location.position for location in locations]
         else:
@@ -61,7 +60,8 @@ class WorldBuilder:
             lords = [l for l in self.map.manager.lords]
             villages_names = self.map.manager.villages_names
             location_type = LocationType.village if random() > 0.02 else LocationType.town
-            population = (65, 240) if location_type == LocationType.village else (500, 1750)
+            population = (
+            65, 240) if location_type == LocationType.village else (500, 1750)
             self.map.manager.add(
                 Location(
                     len(self.map.manager.locations) + 1,
@@ -105,22 +105,27 @@ class WorldBuilder:
         print(f'Total number of trees grown: {trees_count}')
         return forests
 
-    def get_random_points(self, count, radius) -> List[Point]:
+    def get_random_points(self, required_points_count, radius) -> List[Point]:
         cell_size = int(radius / math.sqrt(2))
         grid: Dict[Tuple[int, int], Any] = self.generate_grid(cell_size)
         grid_rows = self.map.height // cell_size
         grid_columns = self.map.width // cell_size
         points = []
-
-        required_villages_count = count or VILLAGES_COUNT
-        while required_villages_count:
-            point = (randint(25, self.map.width-150),
-                     randint(25, self.map.height-150))
-            cell = int(point[0]) // cell_size, int(point[1] // cell_size)
+        available_cells = [
+            k for k in grid.keys() if k[0] if
+            0 < k[0] < grid_columns and 0 < k[1] < grid_rows
+        ]
+        while required_points_count and available_cells:
+            cell = choice(available_cells)
+            point = (
+                cell[0] * cell_size + randint(1, cell_size),
+                cell[1] * cell_size + randint(1, cell_size)
+            )
             if self.valid(cell, point, radius, grid, grid_columns, grid_rows):
                 grid[cell] = point
                 points.append(point)
-                required_villages_count -= 1
+                required_points_count -= 1
+                available_cells.remove(cell)
         return points
 
     @staticmethod
@@ -145,7 +150,8 @@ class WorldBuilder:
         for i in range(min_x, max_x):
             for j in range(min_y, max_y):
                 if (other := grid[(i, j)]) is not None:
-                    dist = math.hypot((other[0] - point[0]), (other[1] - point[1]))
+                    dist = math.hypot((other[0] - point[0]),
+                                      (other[1] - point[1]))
                     if dist < radius:
                         return False
         return True
@@ -159,7 +165,7 @@ class WorldBuilder:
         return grid
 
     def connect_locations_with_roads(self, points) -> List[Tuple[List,
-                                                                 Point,
+                                                                 ShapelyPoint,
                                                                  float]]:
         shapely_points = MultiPoint(points)
         connections = triangulate(shapely_points, edges=True)
@@ -167,7 +173,7 @@ class WorldBuilder:
         curved_roads = self.curve_roads(roads)
         return curved_roads
 
-    def curve_roads(self, roads: List) -> List[Tuple[List, Point, float]]:
+    def curve_roads(self, roads: List) -> List[Tuple[List, ShapelyPoint, float]]:
         curved = []
         for coords, centroid, length in roads:
             points = [p for p in coords]
@@ -219,7 +225,6 @@ class Map:
         self.cursor_position = None
         self.pointed_location: Optional[Location] = None
         self.selected_locations = set()
-        self.minimap_points: List[Point] = []
         self.forests: Dict[Point, List[Tuple[Point, ...]]] = {}
         self.roads: List[Tuple[List[Point], ShapelyPoint, float]] = []
         self.regions: Dict[Point, List[Point]] = {}
@@ -228,7 +233,8 @@ class Map:
         self.application.after(13, self.update)
 
     def create_map_canvas(self, parent) -> Canvas:
-        canvas = Canvas(parent, width=MAP_CANVAS_WIDTH, height=MAP_CANVAS_HEIGHT,
+        canvas = Canvas(parent, width=MAP_CANVAS_WIDTH,
+                        height=MAP_CANVAS_HEIGHT,
                         bg='DarkOliveGreen3', borderwidth=2, relief=SUNKEN,
                         cursor='crosshair')
         canvas.bind('<Enter>', self.on_mouse_enter)
@@ -244,8 +250,8 @@ class Map:
 
     def update(self):
         if (not self.roads) and self.manager.lords:
-            self.roads, self.regions, self.forests = self.builder.build_world()
-            self.minimap_points = self.regions.keys()
+            data = self.builder.build_world()
+            self.roads, self.regions, self.forests = data
         if self.application.map_canvas is not None:
             canvas: Canvas = self.application.map_canvas
             self.draw_map(canvas)
@@ -269,14 +275,16 @@ class Map:
 
     def draw_roads(self, canvas, b, l, r, t, zoom):
         for i, (road, centroid, length) in enumerate(self.roads):
-            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in road):
+            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in
+                   road):
                 points = [(p[0] * zoom - l, p[1] * zoom - b) for p in road]
                 canvas.create_line(*points, dash=(6, 3), fill='brown')
 
     def draw_regions(self, canvas, b, l, r, t, zoom):
         for location in self.selected_locations:
             region = self.regions[location.position]
-            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in region):
+            if any((l < p[0] * zoom < r and b < p[1] * zoom < t) for p in
+                   region):
                 points = [(p[0] * zoom - l, p[1] * zoom - b) for p in region]
                 canvas.create_polygon(*points, dash=(6, 3), outline='yellow',
                                       fill='DarkOliveGreen3')
@@ -299,7 +307,8 @@ class Map:
                         self.pointed_location = location
                 else:
                     color = 'white'
-                self.draw_single_location(canvas, color, location, x - l, y - b)
+                self.draw_single_location(canvas, color, location, x - l,
+                                          y - b)
 
     def draw_single_location(self, canvas, color, location, x, y):
         zoom = self.zoom
@@ -320,7 +329,8 @@ class Map:
             return self.draw_house_icon(canvas, color, size, x, y)
         for i in range(0, icons_number):
             angle_offset = 360 / icons_number
-            xi, yi = move_along_vector((x, y), size * 3, angle=angle_offset * i)
+            xi, yi = move_along_vector((x, y), size * 3,
+                                       angle=angle_offset * i)
             self.draw_house_icon(canvas, color, size, xi, yi)
 
     @staticmethod
@@ -385,7 +395,8 @@ class Map:
 
     def draw_minimap(self, canvas: Canvas):
         canvas.create_rectangle(
-            10, 10, 10 + self.width / 100, 10 + self.height / 100, fill='white')
+            10, 10, 10 + self.width / 100, 10 + self.height / 100,
+            fill='white')
         self.draw_locations_points(canvas)
         self.draw_forests_points(canvas)
         self.draw_viewport(canvas)
@@ -457,14 +468,12 @@ class Map:
     def zoom_out(self, ratio):
         if self.zoom > MIN_ZOOM:
             self.zoom = clamp(self.zoom - 0.1, MAX_ZOOM, MIN_ZOOM)
-            self.viewport[0] *= ratio
-            self.viewport[1] *= ratio
-            
+            self.viewport = [v * ratio for v in self.viewport]
+
     def zoom_in(self, ratio):
         if self.zoom < MAX_ZOOM:
             self.zoom = clamp(self.zoom + 0.1, MAX_ZOOM, MIN_ZOOM)
-            self.viewport[0] /= ratio
-            self.viewport[1] /= ratio
+            self.viewport = [v / ratio for v in self.viewport]
 
     def update_viewport(self, dx, dy):
         l, b, r, t = self.viewport
