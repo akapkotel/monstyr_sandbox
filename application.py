@@ -232,9 +232,11 @@ class Application(tk.Tk):
                    state=self.sdb_file_exists()).pack(side=LEFT)
 
         TkButton(section, command=self.load_data, text='Reload data',
-                 state=self.sdb_file_exists()).pack(side=LEFT, padx=190)
+                 state=self.sdb_file_exists()).pack(side=LEFT, padx=100)
+        TkButton(section, command=self.map._build_world, text='Build world',
+                 state=self.sdb_file_exists()).pack(side=LEFT, padx=100)
         TkButton(section, command=self.save_lords, text='Save data',
-                 state=self.sdb_file_exists()).pack(side=LEFT, padx=190)
+                 state=self.sdb_file_exists()).pack(side=LEFT, padx=100)
 
         AuthButton(section,
                    command=partial(self.new_instance_and_window, Location),
@@ -522,14 +524,15 @@ class Application(tk.Tk):
             variable, widget = self.widget_from_instance_or_none(*data)
         return variable, pack_widget(widget, side=LEFT)
 
-    @staticmethod
-    def widget_from_string_attribute(attr: str, container, name):
+    def widget_from_string_attribute(self, attr: str, container, name):
         variable = StringVar(value=attr)
         if name in ('portrait', 'image', 'picture'):
             path = os.path.join(os.getcwd(), name + 's', attr)
             photo = load_image_or_placeholder(path)
             widget = Label(container, image=photo, relief=SUNKEN)
             widget.photo = photo
+            widget.bind('<Button-1>', partial(
+                self.change_widget_image, widget, variable))
         else:
             widget = Entry(container, textvariable=variable, width=35)
         return variable, widget
@@ -590,11 +593,11 @@ class Application(tk.Tk):
         Create proper interactive widget: Button or other object which user
         can interact with to manipulate data of the data widget provided.
         """
-        if name in ('portrait', 'image', 'picture'):
-            action = self.image_action_widget(container, name, variable, widget)
-        elif name == 'full_name':
+        # if name in ('portrait', 'image', 'picture'):
+        #     action = self.image_action_widget(container, name, variable, widget)
+        if name == 'full_name':
             action = self.new_name_action_widget(container, instance, variable)
-        elif name in ('_spouse', 'liege'):
+        elif name in ('_spouse', 'liege', 'owner'):
             action = self.pick_lord_action(container, instance, name, variable)
         elif isinstance(widget, Listbox):
             action = self.listbox_action_widget(container, instance, name,
@@ -608,28 +611,19 @@ class Application(tk.Tk):
             container, text='Random name', command=partial(
                 self.generate_random_name, variable, instance.sex))
 
-    def image_action_widget(self, container, name, variable, widget):
-        return AuthButton(
-            container, text=f'Change {name}', command=partial(
-                self.change_widget_image, widget, variable))
-
     def pick_lord_action(self, container, instance, name, variable):
-        if name == '_spouse':
-            change_text, delete_text = 'New marriage', 'Divorce'
-        else:
-            change_text, delete_text = 'New liege', 'Break feudal bond'
         return (
-            AuthButton(container, text=change_text,
-                       command=partial(self.lords_listbox_window, instance,
+            AuthButton(container, text=f'New {name.lstrip("_")}',
+                       command=partial(self.items_picking_window, instance,
                                        name, variable)),
-            AuthButton(container, text=delete_text,
+            AuthButton(container, text=f'Delete {name.lstrip("_")}',
                        command=lambda: variable.set(value=''))
         )
 
     def listbox_action_widget(self, container, instance, name, variable,
                               widget):
         add = AuthButton(container, text=f'Add {name.lstrip("_")}',
-                         command=partial(self.lords_listbox_window,
+                         command=partial(self.items_picking_window,
                                          instance, name, variable, widget))
         delete = AuthButton(container, text='Delete',
                             command=partial(self.clear_list_variable,
@@ -641,13 +635,14 @@ class Application(tk.Tk):
 
     @staticmethod
     def set_widget_value_to_listbox_value(widget: Listbox,
-                                          listbox: Listbox, event: tk.Event):
+                                          listbox: Listbox, event: EventType):
         name = listbox.get(f"@{event.x},{event.y}")
         widget.insert(END, name)
 
     @staticmethod
     def set_variable_value_to_listbox_value(variable: Any,
-                                            listbox: Listbox, event: tk.Event):
+                                            listbox: Listbox,
+                                            event: EventType):
         name = listbox.get(f"@{event.x},{event.y}")
         try:
             variable.set(name)
@@ -655,7 +650,7 @@ class Application(tk.Tk):
             variable.append(name)
 
     def get_listbox_selected_value(self,
-                                   event: tk.Event,
+                                   event: EventType,
                                    listbox: Listbox) -> Union[
         Nobleman, Location]:
         listbox_selected = listbox.get(f"@{event.x},{event.y}")
@@ -666,13 +661,13 @@ class Application(tk.Tk):
         return instance
 
     @staticmethod
-    def change_widget_image(widget: Label, variable: StringVar):
-        filename = fd.askopenfile(title=f'Select image', mode='r')
-        photo = load_image_or_placeholder(filename.name)
-        name = filename.name.rsplit('/', 1)[1]
-        variable.set(name)
-        widget.configure(image=photo)
-        widget.photo = photo
+    def change_widget_image(widget: Label, variable: StringVar, event: EventType):
+        if filename := fd.askopenfile(title=f'Select image', mode='r'):
+            photo = load_image_or_placeholder(filename.name)
+            name = filename.name.rsplit('/', 1)[1]
+            variable.set(name)
+            widget.configure(image=photo)
+            widget.photo = photo
 
     def save_instance(self,
                       instance: Union[Nobleman, Location],
@@ -774,7 +769,7 @@ class Application(tk.Tk):
         elif attr_name == '_fiefs':
             return self.manager.get_location_by_name(value)
 
-    def lords_listbox_window(self,
+    def items_picking_window(self,
                              instance: Nobleman,
                              name: str,
                              variable: Any,
@@ -784,14 +779,23 @@ class Application(tk.Tk):
         window.title(f'Pick new {name.lstrip("_")}')
         window.geometry('350x250')
 
-        listbox = self.create_lords_listbox(variable, widget, window)
+        search_variable = StringVar()
+        entry = Entry(window, textvariable=search_variable)
+        entry.pack(side=TOP)
+
+        listbox = self.create_items_listbox(variable, widget, window)
         for name in self.get_data_for_listbox(instance, name):
             listbox.insert(END, name)
+
+        entry.bind(
+            '<Key>', partial(input_match_search, search_variable,
+                             lambda: self.manager.lords if name in LORDS_SETS
+                             else self.manager.locations, listbox))
 
         TkButton(window, text='Confirm and close',
                  command=window.destroy).pack(side=TOP)
 
-    def create_lords_listbox(self, variable, widget, window):
+    def create_items_listbox(self, variable, widget, window):
         listbox = AuthListbox(window, width=30)
         listbox.bind('<Button-1>',
                      partial(self.set_variable_value_to_listbox_value,
@@ -805,7 +809,7 @@ class Application(tk.Tk):
     def get_data_for_listbox(self,
                              instance: Union[Nobleman, Location],
                              name: str) -> Generator:
-        if name in LORDS_SETS:
+        if name == 'owner' or name in LORDS_SETS:
             data = self.get_lords_for_listbox(instance, name)
         else:
             data = self.get_locations_for_listbox(instance, name)

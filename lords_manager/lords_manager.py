@@ -3,7 +3,7 @@ import os
 import shelve
 import string
 
-from typing import List, Dict, Set, Union
+from typing import List, Dict, Set, Union, Optional
 from functools import lru_cache
 from random import random, choice, randint
 from typing import Tuple
@@ -16,15 +16,15 @@ from utils.classes import Nobleman, Location
 from utils.functions import Point
 
 LORDS_FIEFS = {  # title: (min fiefs, max fiefs)
-    Title.client: (0, 0),
-    Title.chevalier: (1, 5),
-    Title.baronet: (2, 8),
-    Title.baron: (3, 10),
-    Title.vicecount: (4, 12),
-    Title.count: (5, 15),
-    Title.duke: (6, 18),
-    Title.prince: (8, 24),
-    Title.king: (10, 30)
+    Title.client: 0,
+    Title.chevalier: 3,
+    Title.baronet: 5,
+    Title.baron: 8,
+    Title.vicecount: 12,
+    Title.count: 15,
+    Title.duke: 18,
+    Title.prince: 24,
+    Title.king: 30
 }
 
 LORDS_VASSALS = {
@@ -52,20 +52,19 @@ TerrainElements = Dict[Point, List[Tuple[Point, ...]]]
 
 class LordsManager:
     """Container and manager for all Nobleman instances."""
-    villages_names = []
-    names: Dict[Sex, List[str]] = {}
-    surnames: List[str]
-    prefixes = List[str]
-    _lords: Dict[int, Nobleman] = {}
-    _locations: Dict[int, Location] = {}
-    roads: List[Tuple[List[Point], ShapelyPoint, float]] = []
-    regions: Dict[Point, List[Point]] = {}
-    forests: TerrainElements = {}
-    hills: TerrainElements = {}
-    discarded: Set = set()
-    ready = False
 
     def __init__(self):
+        self.locations_names = []
+        self.names: Dict[Sex, List[str]] = {}
+        self.surnames: List[str]
+        self.prefixes = List[str]
+        self._lords: Dict[int, Nobleman] = {}
+        self._locations: Dict[int, Location] = {}
+        self.roads: List[Tuple[List[Point], ShapelyPoint, float]] = []
+        self.regions: Dict[Point, List[Point]] = {}
+        self.forests: TerrainElements = {}
+        self.hills: TerrainElements = {}
+        self.discarded: Set = set()
         self.ready = self.load_data_from_text_files()
 
     def load_data_from_text_files(self):
@@ -74,7 +73,7 @@ class LordsManager:
             self.names[Sex.woman] = self.load_names('f_names.txt')
             self.surnames = self.load_names('surnames.txt')
             self.prefixes = self.load_names('prefixes.txt')
-            self.villages_names = list(set(self.load_names('villages.txt')))
+            self.locations_names = list(set(self.load_names('locations.txt')))
             return True
         except Exception as e:
             print(str(e))
@@ -282,7 +281,8 @@ class LordsManager:
             return set(self.locations)
         return {loc for loc in self.locations if loc.type is locations_type}
 
-    def get_locations_by_owner(self, owner: Nobleman) -> Set[Location]:
+    def get_locations_by_owner(self,
+                               owner: Optional[Nobleman] = None) -> Set[Location]:
         return {loc for loc in self.locations if loc.owner is owner}
 
     def get_location_of_id(self, id: Union[int, Location]) -> Location:
@@ -329,18 +329,16 @@ class LordsManager:
         else:
             del self._locations[discarded.id]
 
-    def clear(self, lords=True, locations=True, forests=True, hills=True):
-        if lords:
-            self.discarded.update(self.lords)
-            self._lords.clear()
-        if locations:
-            self.discarded.update(self.locations)
-            self._locations.clear()
-            self.roads.clear()
-        if forests:
-            self.forests.clear()
-        if hills:
-            self.hills.clear()
+    def clear(self, all=False, _lords=False, _locations=False, roads=False,
+              forests=False, hills=False):
+        names = locals()
+        for name in (n for n in names if n != 'self' and (names['all'] or names[n])):
+            try:
+                self.discarded.update(getattr(self, name))
+            except (TypeError, AttributeError):
+                pass
+            if name != 'all':
+                self.__dict__[name].clear()
 
     @staticmethod
     def clear_db():
